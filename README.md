@@ -42,7 +42,7 @@ FAIL HashMismatch          # exit 2
 
 ### 2. Standalone Rust verifier (tiny dependency surface, no engine)
 
-From the runtime repo ([github.com/blank3rs/heso](https://github.com/blank3rs/heso)):
+From the runtime repo ([github.com/heso-inc/heso](https://github.com/heso-inc/heso)):
 ```sh
 cargo run -p heso-verify -- /path/to/sample-sealed-plat.json
 # or install a standalone binary:  cargo install --path crates/heso-verify
@@ -77,7 +77,7 @@ Both check every case in `vectors/heso-1.0-vectors.json`. The interop check is t
 
 ## Implementations
 
-- **Rust** — the reference runtime that *produces* HESO records, plus the standalone `heso-verify` crate (the single source of truth for verification): [github.com/blank3rs/heso](https://github.com/blank3rs/heso).
+- **Rust** — the reference runtime that *produces* HESO records, plus the standalone `heso-verify` crate (the single source of truth for verification): [github.com/heso-inc/heso](https://github.com/heso-inc/heso).
 - **Python** — the from-scratch reference verifier in [`verifier/`](./verifier/), built from this spec alone to prove it's implementable without sharing code.
 
 ## License

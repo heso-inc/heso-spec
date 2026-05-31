@@ -1,6 +1,6 @@
 # HESO/1.0 — Protocol Specification
 
-**Status:** Draft. **Reference implementation:** `heso` (github.com/blank3rs/heso).
+**Status:** Draft. **Reference implementation:** `heso` (github.com/heso-inc/heso).
 
 This document specifies the wire formats and verification rules of HESO/1.0.
 Any program that produces and verifies the artifacts below according to these
