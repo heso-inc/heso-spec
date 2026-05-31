@@ -1,0 +1,17 @@
+{
+  "alg": "heso-plat/v1+ed25519",
+  "content": {
+    "actions": [],
+    "description": "",
+    "input_url": "https://example.com/",
+    "plat_hash": "bc272895d75d0d780e6304e2cbd15a7a67819a3909c1aa5c51f7b5bbb28abccf",
+    "title": "Example",
+    "tree": [],
+    "url": "https://example.com/"
+  },
+  "signature": {
+    "algorithm": "Ed25519",
+    "public_key": "O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik=",
+    "signature": "wNzBIcWiNtEUEGcobYsQ9XwL5Dp5GFMSHxVinCUhXHymWYq0Eflns1z6YAuSnw39RD91ifZh81LYhnKg3/zsDQ=="
+  }
+}
