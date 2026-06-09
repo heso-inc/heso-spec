@@ -346,6 +346,13 @@ The §0.1 consistency-vs-truth boundary is the reason grades exist: each grade
 adds a trust anchor outside the operator. HESO/1.0 deliberately stops at the
 boundary so the open protocol leaks no part of the Enterprise trust layer.
 
+HESO Enterprise restates these grades as trust *levels* (L0–L3) for an
+**agent-compliance** layer over agent *actions* (not web observations): L0 is the
+operator-signed action, L1 adds an authorized human approver's co-signature, and
+L2/L3 mirror the threshold / external-co-sign grades above — see the Enterprise
+Action Receipt specification. This is an informative pointer only; it changes no
+HESO/1.0 normative rule or §1.9 vector.
+
 ---
 
 ## §6 Conformance
