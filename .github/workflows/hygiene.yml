@@ -1,0 +1,40 @@
+name: hygiene
+
+# Report-only baseline capture (roadmap P0) for the clean-room reference verifier.
+# continue-on-error so nothing blocks merge yet; flips blocking in P7.
+# See redesign/refactor/hygiene-and-ci.md §3.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tracked-junk:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - run: bash scripts/check-tracked-junk.sh
+
+  python:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: astral-sh/setup-uv@v5
+        with: { python-version: '3.12' }
+      - name: ruff check (LINT)
+        run: uvx ruff check verifier
+      - name: ruff format --check (STYLE)
+        run: uvx ruff format --check verifier
+      - name: vulture (dead code)
+        run: uvx vulture verifier --min-confidence 80
+      - name: pyright (TYPES)
+        run: uvx pyright verifier
