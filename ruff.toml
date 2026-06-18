@@ -1,0 +1,8 @@
+# Lint/format config for the clean-room reference verifier.
+# Width 100 matches the house style; without this ruff defaults to 88 and flags
+# conformant code. Keep ruff check + ruff format --check honest.
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "W"]

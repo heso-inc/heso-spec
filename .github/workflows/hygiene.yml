@@ -37,4 +37,4 @@ jobs:
       - name: vulture (dead code)
         run: uvx vulture verifier --min-confidence 80
       - name: pyright (TYPES)
-        run: uvx pyright verifier
+        run: uvx --with-requirements verifier/requirements.txt pyright verifier
