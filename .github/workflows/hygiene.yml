@@ -1,0 +1,57 @@
+name: hygiene
+
+# Report-only baseline capture (roadmap P0) for the clean-room reference verifier.
+# The findings (ruff/vulture/pyright/deptry · tracked-junk) ARE the baseline we
+# clean to zero before flipping these BLOCKING in P7.
+#
+# Convention: a job is GREEN when its tools RAN (findings go to the job summary);
+# a job only goes RED when the environment itself can't be set up — so red always
+# means "actually broken", never "baseline noise". The three concerns stay
+# distinct: STYLE/LINT vs TYPES vs DEAD-CODE+DEPS.
+# See redesign/refactor/hygiene-and-ci.md §3.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Real gate (not report-only): fails red if an ignored-class artifact is tracked.
+  tracked-junk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - run: bash scripts/check-tracked-junk.sh
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: astral-sh/setup-uv@v5
+        with: { python-version: '3.12' }
+      - name: Findings → summary (report-only, never blocks)
+        run: |
+          s="$GITHUB_STEP_SUMMARY"
+          echo "## Python hygiene baseline (report-only)" >> "$s"
+          report() { t="$1"; shift; { echo "<details><summary>$t</summary>"; echo '```'; "$@" 2>&1 || true; echo '```'; echo "</details>"; } >> "$s"; }
+          report "ruff check (LINT)" uvx ruff check verifier
+          report "ruff format --check (STYLE)" uvx ruff format --check verifier
+          report "vulture (dead code)" uvx vulture verifier --min-confidence 80
+          report "pyright (TYPES)" uvx --with-requirements verifier/requirements.txt pyright verifier
+      - name: deptry (DEPS) — DEFERRED
+        run: |
+          cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          ## deptry (DEPS) — DEFERRED
+
+          deptry needs project metadata (`pyproject.toml`) or installed package
+          metadata to resolve declared-vs-imported deps, but the verifier ships as
+          loose scripts pinned via `verifier/requirements.txt` (no `pyproject.toml`).
+          Re-enable once the verifier is packaged. Until then the requirements file
+          is the dependency source of truth. See redesign/refactor/hygiene-and-ci.md §3.
+          EOF
