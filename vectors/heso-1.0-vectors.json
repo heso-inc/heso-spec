@@ -185,29 +185,7 @@
       "plat_hash": "8382289f9f3b1dfb53d2428c3a77be5a199389abf49ccd0861a8b318ca042532"
     }
   ],
-  "receipt_vector": {
-    "expected_outcome": "Valid",
-    "public_key_b64": "O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik=",
-    "seed_hex": "0000000000000000000000000000000000000000000000000000000000000000",
-    "signed_receipt_json": {
-      "cost": {
-        "bytes": 0,
-        "cpu_ms": 0,
-        "planner_tokens": 0,
-        "wall_ms": 0
-      },
-      "mode": "deterministic",
-      "results": [],
-      "seed": 0,
-      "signature": {
-        "algorithm": "Ed25519",
-        "public_key": "O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik=",
-        "signature": "ftbNdyeSkZ70OWsp4jYC9ploqbQoT0NjgNbCpLK9IJnuoI0cHAlAWkG29LQxLMjET0PDTKpS9i2JJepp8MXlDQ=="
-      },
-      "trace": [],
-      "trace_hash": "d53d18c23212ea7b6300594bb89bce60218f6eff2b9d628b8cc42d3e79bbd5ab"
-    }
-  },
+  "_dropped_receipt_vector": "The legacy HESO/1.0 §3.5 sandbox-replay `receipt_vector` (trace_hash/seed/cost/results/trace) was REMOVED in the P1 absorption. It was carried as data but never executed (no false coverage), and its signature could not be reproduced by any reconstructable §3.5 signing rule (the Rust crate that minted it no longer exists in-tree). Receipt coverage is now the rust-reference-validated `action_receipt_v2` corpus in heso-1.0-crown-vectors.json. A spec-faithful §3.5 `verify_receipt()` remains in verifier/heso_verify.py for any future golden minted by a runnable reference. See redesign/kill-list.md (un-run receipt_vector) and redesign/standard/conformance-and-envelope.md §2.1.",
   "sealed_envelope_vector": {
     "canonical_bytes_hex": "7b22616374696f6e73223a5b5d2c226465736372697074696f6e223a22222c22696e7075745f75726c223a2268747470733a2f2f6578616d706c652e636f6d2f222c227469746c65223a224578616d706c65222c2274726565223a5b5d2c2275726c223a2268747470733a2f2f6578616d706c652e636f6d2f227d",
     "expected_outcome": "Valid",

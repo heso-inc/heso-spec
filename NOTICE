@@ -1,4 +1,18 @@
-HESO is a trademark of the HESO project. This specification is licensed under
-CC BY 4.0; anyone may implement it. The name "HESO" may be used to describe
-conformance ("HESO/1.0-conformant") but not as a product name without
-permission.
+HESO is a trademark of the HESO project.
+
+License posture (the license boundary is the repo boundary — see GOVERNANCE.md §7):
+
+  * Specification text — HESO-1.0.md, everything under modules/, the governance
+    docs (GOVERNANCE.md, CONTRIBUTING.md, CHANGELOG.md, SECURITY.md), README.md,
+    and the normative prose in the data files — is licensed CC BY 4.0
+    (SPDX-License-Identifier: CC-BY-4.0). See LICENSE. Anyone may implement it.
+
+  * Conformance vectors (vectors/) are dedicated to the public domain under
+    CC0 1.0 (SPDX-License-Identifier: CC0-1.0), so anyone may run conformance
+    with zero friction.
+
+  * catalog.toml is open, but a deliberate descriptive label layer, not the
+    structural spine.
+
+The name "HESO" may be used to describe conformance ("HESO/1-conformant") but not
+as a product name without permission.
