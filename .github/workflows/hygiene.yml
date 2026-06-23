@@ -1,14 +1,15 @@
 name: hygiene
 
-# Report-only baseline capture (roadmap P0) for the clean-room reference verifier.
-# The findings (ruff/vulture/pyright/deptry · tracked-junk) ARE the baseline we
-# clean to zero before flipping these BLOCKING in P7.
+# Hygiene gate for the clean-room reference verifier.
 #
-# Convention: a job is GREEN when its tools RAN (findings go to the job summary);
-# a job only goes RED when the environment itself can't be set up — so red always
-# means "actually broken", never "baseline noise". The three concerns stay
-# distinct: STYLE/LINT vs TYPES vs DEAD-CODE+DEPS.
-# See redesign/refactor/hygiene-and-ci.md §3.
+# The P0 report-only baseline (ruff/vulture/pyright) has been cleaned to zero, so
+# per redesign/refactor/hygiene-and-ci.md §3 those three now BLOCK: ruff check +
+# ruff format --check (STYLE/LINT), vulture (DEAD-CODE), pyright strict (TYPES).
+# A finding is a red build, not summary noise. The three concerns stay distinct.
+#
+# deptry (DEPS) stays DEFERRED: it needs project metadata (`pyproject.toml`) or
+# installed package metadata, and the verifier ships as loose scripts pinned via
+# `verifier/requirements.txt`. Re-enable once the verifier is packaged.
 
 on:
   pull_request:
@@ -35,15 +36,29 @@ jobs:
         with: { persist-credentials: false }
       - uses: astral-sh/setup-uv@v5
         with: { python-version: '3.12' }
-      - name: Findings → summary (report-only, never blocks)
+      - name: Python hygiene gate (blocking)
         run: |
           s="$GITHUB_STEP_SUMMARY"
-          echo "## Python hygiene baseline (report-only)" >> "$s"
-          report() { t="$1"; shift; { echo "<details><summary>$t</summary>"; echo '```'; "$@" 2>&1 || true; echo '```'; echo "</details>"; } >> "$s"; }
-          report "ruff check (LINT)" uvx ruff check verifier
-          report "ruff format --check (STYLE)" uvx ruff format --check verifier
-          report "vulture (dead code)" uvx vulture verifier --min-confidence 80
-          report "pyright (TYPES)" uvx --with-requirements verifier/requirements.txt pyright verifier
+          echo "## Python hygiene gate" >> "$s"
+          # Run every blocking check, record each in the job summary, and fail the
+          # build at the end if ANY reported a finding (so one red check never
+          # hides the others' output).
+          # `set -e` is on by default in GitHub `run:`; capture each tool's exit
+          # WITHOUT aborting (`if ! out=$(...)`) so every finding lands in the
+          # summary, then fail once at the end.
+          failed=0
+          gate() {
+            t="$1"; shift
+            rc=0
+            out="$("$@" 2>&1)" || rc=$?
+            if [ "$rc" -ne 0 ]; then failed=1; fi
+            { echo "<details><summary>$t (exit $rc)</summary>"; echo '```'; echo "$out"; echo '```'; echo "</details>"; } >> "$s"
+          }
+          gate "ruff check (LINT)" uvx ruff check verifier
+          gate "ruff format --check (STYLE)" uvx ruff format --check verifier
+          gate "vulture (DEAD-CODE)" uvx vulture verifier --min-confidence 80
+          gate "pyright (TYPES, strict)" uvx --with-requirements verifier/requirements.txt pyright verifier
+          exit "$failed"
       - name: deptry (DEPS) — DEFERRED
         run: |
           cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
