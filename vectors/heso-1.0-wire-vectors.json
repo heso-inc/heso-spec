@@ -8,7 +8,7 @@
       "REDACT-RECEIPT": "valid"
     },
     "scope": "Validates the SOURCE receipts whose fingerprints the commitments project. The FULL-receipt->commitment projection itself is spec-derived (no Rust commitment mint yet).",
-    "verify_cli": "/Users/akshaymysore/Documents/heso/heso-enterprise/target/debug/heso-verify-cli"
+    "verify_cli": "heso-verify-cli"
   },
   "chained_receipt": {
     "cases": [

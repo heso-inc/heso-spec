@@ -975,9 +975,10 @@ def main() -> int:
             print("FATAL: Rust reference verdict mismatch — vectors NOT written", file=sys.stderr)
             return 1
         vectors["_rust_reference_validation"] = {
-            "verify_cli": os.path.relpath(VERIFY_CLI, REPO)
-            if VERIFY_CLI.startswith(REPO)
-            else VERIFY_CLI,
+            # Basename only: VERIFY_CLI lives in the sibling heso-enterprise repo, so an
+            # absolute/relative path leaks the build host (e.g. /Users/... vs /home/runner/...)
+            # and makes the corpus drift across machines. The name is all that is informative.
+            "verify_cli": os.path.basename(VERIFY_CLI),
             "scope": (
                 "Validates the SOURCE receipts whose fingerprints the commitments "
                 "project. The FULL-receipt->commitment projection itself is "

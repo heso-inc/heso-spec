@@ -13,7 +13,7 @@
       "CHAIN-VALID": "valid",
       "REDACT-RECEIPT": "valid"
     },
-    "verify_cli": "/Users/akshaymysore/Documents/heso/heso-enterprise/target/debug/heso-verify-cli"
+    "verify_cli": "heso-verify-cli"
   },
   "action_receipt_v2": {
     "action_version": "heso-action/2.0",
