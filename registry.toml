@@ -1,0 +1,71 @@
+# registry.toml — the HESO/1 Taxonomy-Extension Registry (machine-readable).
+#
+# Status: Normative. The open, append-only ledger of registered namespaced
+# taxonomy extensions. This is the SINGLE place where `<ns>/` namespaces are
+# allocated and where third parties discover what a registered extension means.
+#
+# The taxonomy ([modules/taxonomy.md]) mandates that any extension be namespaced
+# `<ns>/<name>` and map structurally onto exactly ONE of the five canonical
+# destructive primitives. This file is that mandate made into a process: a
+# namespace is OWNED only once it is recorded here, and an extension is
+# CONFORMANT only once it ships with classify vectors (see
+# modules/taxonomy-extension-registry.md for the registration process).
+#
+# License: spec text CC BY 4.0; the vectors this file references are CC0.
+#
+# === RULES (normative) ===
+#  * A bare (un-namespaced) name is RESERVED for the core HESO/1 taxonomy and MUST
+#    NOT appear here. Only `<ns>/<name>` entries are valid extensions.
+#  * Each namespace `[[namespace]]` is allocated to exactly one owner. Namespaces
+#    are first-come, recorded here, and never reassigned (append-only).
+#  * Each extension `[[extension]]` MUST set `primitive` to one of the five:
+#    move-value | destroy | change-authority | disclose | execute. It MAY NOT
+#    introduce a sixth primitive — the spine is closed; only the leaves grow.
+#  * Each `[[extension]]` MUST reference its conformance vectors (`vectors`) — an
+#    extension with no published classify vectors is NOT conformant.
+#  * This file is APPEND-ONLY. An extension is retired by setting `status =
+#    "deprecated"`, never by deletion (old receipts that referenced it must still
+#    resolve). Same immutability discipline as the rest of the standard.
+#
+# === SCHEMA ===
+# [[namespace]]
+#   ns        — the namespace token (lower-kebab, no slash). The owned prefix.
+#   owner     — human-readable owner / steward of the namespace.
+#   contact   — a reachable contact (URL or email) for the owner.
+#   registered— ISO-8601 date the namespace was allocated.
+#   homepage  — (optional) where the namespace's extensions are documented.
+#
+# [[extension]]
+#   id        — the full `<ns>/<name>` extension id (MUST match an allocated ns).
+#   kind      — "class" (a new `[[class]]`) or "extend" (members added to a
+#               built-in class's predicate sets via `[[extend]]`).
+#   primitive — the canonical primitive this maps onto (one of the five).
+#   summary   — one-line description of what it classifies.
+#   vectors   — path (relative to repo root) to the classify vectors covering it.
+#   status    — "active" | "deprecated".
+#   registered— ISO-8601 date this extension was registered.
+#   superseded_by — (optional) the `<ns>/<name>` that replaces a deprecated one.
+
+# === REGISTERED NAMESPACES ===
+# (none yet — the core HESO/1 taxonomy ships with zero extensions. The first
+#  third-party namespace lands here via the registration process. This empty
+#  registry is intentional: it makes "extensible" a real, discoverable process
+#  rather than a comment in taxonomy.toml.)
+
+# Example shape (commented — NOT a registered entry):
+#
+# [[namespace]]
+# ns = "acme"
+# owner = "Acme Corp"
+# contact = "https://acme.example/heso"
+# registered = "2026-07-01"
+# homepage = "https://acme.example/heso/taxonomy"
+#
+# [[extension]]
+# id = "acme/internal-ledger"
+# kind = "class"
+# primitive = "move-value"
+# summary = "Acme's internal value-transfer ledger endpoints."
+# vectors = "vectors/ext/acme-internal-ledger.json"
+# status = "active"
+# registered = "2026-07-01"

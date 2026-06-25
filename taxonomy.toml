@@ -1,0 +1,306 @@
+# taxonomy.toml — the HESO Resource/Effect Taxonomy (the CLASSIFICATION SPINE as
+# hashed RUNTIME DATA).
+#
+# This is the SECOND pure-data catalogue in `compliance/` and is DELIBERATELY
+# separate from catalog.toml. They answer different questions:
+#
+#   * catalog.toml   → "which FINE action + which typed fields" (39 actions; the
+#                       auditor's labels / granularity that ride ON TOP).
+#   * taxonomy.toml  → "which RESOURCE CLASS does this action STRUCTURALLY touch,
+#                       and what EFFECT" (the ~10 total classes; the spine that
+#                       decides the lane by what is touched, never by tool name).
+#
+# Keeping them apart keeps the per-RESOURCE-CLASS spine (shared across ALL
+# customers, keyed on structure) cleanly distinct from the per-FINE-action
+# labeling, and lets each carry its own hash: `taxonomy_hash` pins the spine,
+# the catalog pins the labels. Mirrors the existing controls.toml / catalog.toml
+# two-file, embedded-via-include_str!, fail-closed-parse precedent.
+#
+# THE THESIS (from .agents/classification-definitive.md §3a): classify an action
+# by the RESOURCE it structurally touches + its EFFECT, decided by a PURE
+# function over signed observed facts × this hashed taxonomy × a hashed policy —
+# NEVER by tool names or per-tool declarations. The same model that makes AWS
+# IAM / Cedar / VPC-SC complete + deterministic.
+#
+# ORDER IS SEMANTIC. Classes are listed in PRIORITY order: the runtime evaluator
+# tries each `[[class]]` predicate top-to-bottom and the FIRST that matches wins
+# (this encodes the frozen cross-verb ladder: payment > delete > account_change >
+# data_export > llm_call > http_request > tool_call). The LAST class is the
+# unconditional `unresolved` residual whose predicate is `always` — so the
+# classify function is TOTAL: every observed-fact input maps to exactly one
+# class, and there is NO path to a benign class that isn't a NAMED, MATCHED one.
+# An undeclared payment cannot slip through: it is matched as payment_endpoint by
+# host/structure, or it falls to `unresolved` → human. "Allow" is never a default.
+#
+# Each class carries:
+#   id          — stable class id. A built-in id is a bare token. A customer
+#                  extension id MUST be namespaced (`<ns>/<name>`, see below).
+#   coarse_verb — the frozen coarse verb (one of the 7) this class maps DOWN to.
+#                 Authoritative; an override may NOT relabel a built-in class to a
+#                 laxer coarse verb (monotonic narrowing — see the lattice below).
+#   effect      — the structural effect: observe | mutate | destroy |
+#                 transfer_out | spend | grant | effect_unknown.
+#   predicate   — the STRUCTURAL test over observed facts (a closed `kind` + its
+#                 parameter sets). Closed enums, validated fail-closed at load.
+#
+# Predicate kinds (the closed structural-test vocabulary):
+#   host_set     — resolved host ∈ `hosts` (exact, lower-cased host match) OR a
+#                  host suffix in `host_suffixes` (e.g. ".stripe.com").
+#   path_glob    — request path / realpath matches a glob in `path_globs`
+#                  (anchored RE2-translatable glob — `*` = one segment, `**` =
+#                  any; no fuzzy/substring matching).
+#   method_set   — parsed HTTP method ∈ `methods`.
+#   argv_token   — a whole argv/SQL token ∈ `tokens` (token = a maximal
+#                  alphanumeric run; never an arbitrary substring).
+#   row_threshold— observed `row_count_estimate` ≥ `threshold` (or UNKNOWN, which
+#                  fails SAFE to the stricter lane).
+#   fact_flag    — a single signed boolean observed fact named by `flag` is true.
+#   always       — the unconditional residual (only the `unresolved` class).
+#
+# A class may carry SEVERAL predicate rows; they are OR-ed (any matches ⇒ the
+# class matches). This is how "host∈{stripe,…} OR payment-API path grammar OR
+# money+payee body ⇒ payment" is encoded as three predicate rows on one class.
+#
+# Coarse-verb laxity lattice (strict → lax), used to reject a relabel that WIDENS:
+#   payment > delete > account_change > data_export > llm_call > http_request >
+#   tool_call. A customer override may only move a built-in DOWN-lattice is
+#   FORBIDDEN; it may keep the same verb or refuse. (Monotonic narrowing: never
+#   relabel a built-in to something laxer.)
+#
+# Customer extension is ADD-only + NAMESPACED + monotonic:
+#   * may ADD a new `[[class]]` (its id MUST be namespaced `<ns>/<name>`); a new
+#     class is inserted by priority just ABOVE `unresolved` (it can only NARROW
+#     the residual, never pre-empt a built-in dangerous lane).
+#   * may ADD members to a built-in class's predicate sets via `[[extend]]`
+#     (more hosts / suffixes / globs / tokens — strictly grows what is caught).
+#   * may NOT relabel a built-in class's coarse_verb to a laxer one, may NOT add
+#     an `unresolved`-laxing class, may NOT redefine a built-in id.
+# The loader rejects any violation at load time (fail-closed).
+#
+# Generated from .agents/classification-definitive.md §3a. Pure data, NO crypto.
+# `taxonomy_hash` is a BLAKE3 over the RFC-8785 canonical projection of the
+# parsed+validated taxonomy (so it is insensitive to comment/whitespace/key-order
+# churn and stable for byte-for-byte replay).
+
+# 1. payment_endpoint — money movement. Beats everything (top of the ladder).
+[[class]]
+id = "payment_endpoint"
+coarse_verb = "payment"
+effect = "spend"
+
+  # Host membership: the shared payment-processor host set (classified ONCE, not
+  # per tool). A new unseen tool that POSTs to api.adyen.com is payment_endpoint
+  # by construction — nobody declared it.
+  [[class.predicate]]
+  kind = "host_set"
+  host_suffixes = [
+    ".stripe.com", ".adyen.com", ".braintreegateway.com", ".paypal.com",
+    ".squareup.com", ".checkout.com", ".razorpay.com", ".mollie.com",
+    ".wise.com", ".plaid.com", ".dwolla.com", ".gocardless.com",
+    ".payments.jpmorgan.com", ".coinbase.com",
+  ]
+  hosts = [
+    "api.stripe.com", "api.adyen.com", "api.paypal.com",
+    "api.payments.jpmorgan.com",
+  ]
+
+  # Payment-API path grammar (anchored globs over the request path).
+  [[class.predicate]]
+  kind = "path_glob"
+  path_globs = [
+    "/v*/payment_intents*", "/v*/charges*", "/v*/payouts*", "/v*/transfers*",
+    "/payments/**", "/wire/**", "/ach/**", "/v*/refunds*",
+  ]
+
+  # money + payee body shape: the signed `is_payment` fact (a payment rail body
+  # was structurally detected at the capture surface).
+  [[class.predicate]]
+  kind = "fact_flag"
+  flag = "is_payment"
+
+# 2. destructive_op — irreversible state-loss. Above identity/data because a
+#    destroy of an IAM resource is still first a DESTROY.
+[[class]]
+id = "destructive_op"
+coarse_verb = "delete"
+effect = "destroy"
+
+  # method = DELETE on the wire.
+  [[class.predicate]]
+  kind = "method_set"
+  methods = ["DELETE"]
+
+  # SQL-write / destructive shell / IaC-destroy argv tokens (whole-token match).
+  [[class.predicate]]
+  kind = "argv_token"
+  tokens = [
+    "drop", "truncate", "delete", "destroy", "rm", "rmdir", "unlink",
+    "wipe", "purge", "terminate", "teardown",
+  ]
+
+  # the signed structural `destructive` effect parsed from a command / a tagged
+  # destroy channel (`observed_via`).
+  [[class.predicate]]
+  kind = "fact_flag"
+  flag = "effect_destructive"
+
+# 3. identity_endpoint — IAM / auth / SSO / permission mutation (account_change).
+[[class]]
+id = "identity_endpoint"
+coarse_verb = "account_change"
+effect = "grant"
+
+  # Curated IAM/auth/SSO host grammar (shared across customers).
+  [[class.predicate]]
+  kind = "host_set"
+  host_suffixes = [
+    ".iam.amazonaws.com", ".sts.amazonaws.com", ".okta.com", ".auth0.com",
+    ".onelogin.com", ".pingidentity.com", ".login.microsoftonline.com",
+    ".accounts.google.com", ".admin.googleapis.com",
+  ]
+  hosts = ["iam.amazonaws.com", "sts.amazonaws.com"]
+
+  # Permission/credential mutation path grammar.
+  [[class.predicate]]
+  kind = "path_glob"
+  path_globs = [
+    "/iam/**", "/v*/roles*", "/v*/policies*", "/v*/permissions*",
+    "/v*/users*", "/v*/service_accounts*", "/oauth/**", "/scim/v*/**",
+  ]
+
+  # the signed structural identity-change fact.
+  [[class.predicate]]
+  kind = "fact_flag"
+  flag = "is_identity_change"
+
+# 4. secret_store — credential / secret read (data_export; exfil floor).
+[[class]]
+id = "secret_store"
+coarse_verb = "data_export"
+effect = "transfer_out"
+
+  # Secret-manager host grammar.
+  [[class.predicate]]
+  kind = "host_set"
+  host_suffixes = [
+    ".secretsmanager.amazonaws.com", ".vault.hashicorp.cloud",
+    ".secretmanager.googleapis.com", ".vault.azure.net",
+  ]
+  hosts = []
+
+  # Secret-path patterns (anchored globs over the realpath / object key).
+  [[class.predicate]]
+  kind = "path_glob"
+  path_globs = [
+    "**/.env", "**/.env.*", "**/*.pem", "**/id_rsa", "**/id_ed25519",
+    "**/id_*", "**/.aws/credentials", "**/.ssh/**", "**/*.key",
+    "**/kubeconfig", "**/.netrc",
+  ]
+
+  # the signed structural secret-read fact.
+  [[class.predicate]]
+  kind = "fact_flag"
+  flag = "is_secret"
+
+# 5. bulk_data — a large export/dump crossing the boundary (data_export).
+[[class]]
+id = "bulk_data"
+coarse_verb = "data_export"
+effect = "transfer_out"
+
+  # row_count_estimate ≥ threshold (UNKNOWN fails SAFE into this stricter lane).
+  [[class.predicate]]
+  kind = "row_threshold"
+  threshold = 1000
+
+# 6. model_endpoint — inference-provider host / base_url (llm_call).
+[[class]]
+id = "model_endpoint"
+coarse_verb = "llm_call"
+effect = "observe"
+
+  # Inference-provider host grammar (shared).
+  [[class.predicate]]
+  kind = "host_set"
+  host_suffixes = [
+    ".openai.com", ".anthropic.com", ".googleapis.com", ".cohere.ai",
+    ".cohere.com", ".bedrock.amazonaws.com", ".mistral.ai",
+    ".together.xyz", ".groq.com", ".perplexity.ai",
+    ".openai.azure.com", ".cognitiveservices.azure.com",
+  ]
+  hosts = ["api.openai.com", "api.anthropic.com"]
+
+  # Inference path grammar.
+  [[class.predicate]]
+  kind = "path_glob"
+  path_globs = [
+    "/v*/chat/completions*", "/v*/completions*", "/v*/embeddings*",
+    "/v*/messages*", "/v*/responses*",
+  ]
+
+  # the signed structural model-call fact.
+  [[class.predicate]]
+  kind = "fact_flag"
+  flag = "is_model_call"
+
+# 7. messaging_endpoint — curated comms grammar (http_request).
+[[class]]
+id = "messaging_endpoint"
+coarse_verb = "http_request"
+effect = "transfer_out"
+
+  [[class.predicate]]
+  kind = "host_set"
+  host_suffixes = [
+    ".slack.com", ".sendgrid.net", ".twilio.com", ".mailgun.net",
+    ".postmarkapp.com", ".graph.microsoft.com", ".discord.com",
+    ".telegram.org",
+  ]
+  hosts = ["slack.com", "discord.com"]
+
+  [[class.predicate]]
+  kind = "path_glob"
+  path_globs = [
+    "/api/chat.postMessage*", "/v*/mail/send*", "/2010-04-01/Accounts/**",
+    "/v*/me/sendMail*",
+  ]
+
+# 8. generic_network — any other host crossing the boundary (http_request).
+[[class]]
+id = "generic_network"
+coarse_verb = "http_request"
+effect = "transfer_out"
+
+  # Any resolved host present (a network reach we can otherwise not place).
+  [[class.predicate]]
+  kind = "fact_flag"
+  flag = "has_host"
+
+  # Any parsed HTTP method (a request shape with no host yet resolved).
+  [[class.predicate]]
+  kind = "method_set"
+  methods = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH"]
+
+# 9. local_compute — local effect, no egress, non-destructive (tool_call).
+[[class]]
+id = "local_compute"
+coarse_verb = "tool_call"
+effect = "mutate"
+
+  # A local exec/filesystem touch with no network reach (and not destructive —
+  # that was caught by destructive_op above).
+  [[class.predicate]]
+  kind = "fact_flag"
+  flag = "is_local_compute"
+
+# 10. unresolved — the unconditional residual. ALWAYS matches; LAST. Maps to the
+#     coarsest-safe frozen verb (tool_call) for the SIGNED lane, and the policy
+#     engine's dangerous-floor + deny-unknown default routes it to a human. This
+#     is what makes classify a TOTAL function with no silent-allow path.
+[[class]]
+id = "unresolved"
+coarse_verb = "tool_call"
+effect = "effect_unknown"
+
+  [[class.predicate]]
+  kind = "always"

@@ -1,0 +1,1508 @@
+# catalog.toml — the HESO fine-grained action catalog (the source of truth as
+# RUNTIME DATA).
+#
+# 10 lanes (domains) / 39 fine actions, each mapping DOWN to exactly one of the
+# 7 FROZEN signed coarse verbs (llm_call, tool_call, http_request, payment,
+# data_export, account_change, delete). This file is the catalog half of the
+# `heso_engine::catalog` module: it is embedded at build time via
+# include_str! and deserialized into the typed `Catalog`. A customer override
+# (HESO_CATALOG path, or a catalog.toml in the project root) MERGES on top of
+# this shipped default — a customer may ADD domains/actions, but may NOT remap a
+# built-in action onto a different coarse_verb (that would break the cross-verb
+# priority ladder), and the loader rejects such an override at load time.
+#
+# Generated from .agents/policy-catalog.json (final.domains). Keep in sync: this
+# is pure data and carries NO crypto. type/ops/target_type/coarse_verb are CLOSED
+# enums validated fail-closed by `Catalog::parse`.
+#
+# Field shape: name (str), type (bool|enum|host|money|number|string),
+# ops (subset of eq|gt|lt|in|matches), and values (required iff type=enum).
+
+[[action]]
+domain = "model"
+domain_label = "Model / LLM Inference"
+id = "llm_completion"
+label = "LLM completion / chat / media-gen request"
+coarse_verb = "llm_call"
+target_type = "host"
+target_label = "Model provider host"
+
+  [[action.field]]
+  name = "provider"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["openai", "anthropic", "google", "aws", "cohere", "local", "other"]
+
+  [[action.field]]
+  name = "model"
+  type = "string"
+  ops = ["eq", "in", "matches"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "in", "matches"]
+
+  [[action.field]]
+  name = "modality"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["text", "image", "audio", "video", "multimodal"]
+
+  [[action.field]]
+  name = "has_attachment"
+  type = "bool"
+  ops = ["eq"]
+
+  [[action.field]]
+  name = "token_estimate"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "pii_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+  [[action.field]]
+  name = "tools_offered"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "model"
+domain_label = "Model / LLM Inference"
+id = "embedding_request"
+label = "Embedding / vectorization request"
+coarse_verb = "llm_call"
+target_type = "host"
+target_label = "Embedding provider host"
+
+  [[action.field]]
+  name = "provider"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["openai", "anthropic", "google", "aws", "cohere", "local", "other"]
+
+  [[action.field]]
+  name = "model"
+  type = "string"
+  ops = ["eq", "in", "matches"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "in", "matches"]
+
+  [[action.field]]
+  name = "token_estimate"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "batch_count"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "pii_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+[[action]]
+domain = "model"
+domain_label = "Model / LLM Inference"
+id = "agent_delegation"
+label = "Delegate to a sub-agent"
+coarse_verb = "llm_call"
+target_type = "resource"
+target_label = "Target agent"
+
+  [[action.field]]
+  name = "target_agent"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "scope_inherited"
+  type = "string"
+  ops = ["matches", "eq"]
+
+  [[action.field]]
+  name = "budget"
+  type = "money"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "currency"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "USDC", "USDT", "other"]
+
+  [[action.field]]
+  name = "max_tools"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "timeout_ms"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+[[action]]
+domain = "model"
+domain_label = "Model / LLM Inference"
+id = "tool_plan_emitted"
+label = "Model emitted a tool-use / function-call plan (post-response)"
+coarse_verb = "llm_call"
+target_type = "none"
+target_label = "(intent only)"
+
+  [[action.field]]
+  name = "tool_name"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "tool_count"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "targets_coarse_verb"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["llm_call", "tool_call", "http_request", "payment", "data_export", "account_change", "delete"]
+
+[[action]]
+domain = "model"
+domain_label = "Model / LLM Inference"
+id = "memory_write"
+label = "Write agent memory / RAG index / system-prompt"
+coarse_verb = "tool_call"
+target_type = "resource"
+target_label = "Memory store"
+
+  [[action.field]]
+  name = "store"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["vector_db", "kv_memory", "rag_index", "system_prompt", "persona_file", "other"]
+
+  [[action.field]]
+  name = "operation"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["upsert", "delete", "overwrite"]
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "record_count"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "is_agent_instruction"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "compute"
+domain_label = "Compute / Local Tool Execution"
+id = "shell_exec"
+label = "Execute shell command (local compute residual)"
+coarse_verb = "tool_call"
+target_type = "path"
+target_label = "Working directory"
+
+  [[action.field]]
+  name = "command"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "working_directory"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "dispatched_to"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["none", "network", "storage", "payment", "data", "destroy", "identity", "automation"]
+
+  [[action.field]]
+  name = "effect"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["read_only", "mutating", "destructive"]
+
+  [[action.field]]
+  name = "is_secret"
+  type = "bool"
+  ops = ["eq"]
+
+  [[action.field]]
+  name = "environment"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["dev", "staging", "prod", "unknown"]
+
+  [[action.field]]
+  name = "timeout_ms"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+[[action]]
+domain = "compute"
+domain_label = "Compute / Local Tool Execution"
+id = "run_code"
+label = "Execute a code script / eval inline code"
+coarse_verb = "tool_call"
+target_type = "path"
+target_label = "Script file"
+
+  [[action.field]]
+  name = "script_path"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "language"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["python", "node", "javascript", "bash", "ruby", "go", "rust", "java", "csharp", "php", "other"]
+
+  [[action.field]]
+  name = "dispatched_to"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["none", "network", "storage", "payment", "data", "destroy", "identity", "automation"]
+
+  [[action.field]]
+  name = "effect"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["read_only", "mutating", "destructive"]
+
+  [[action.field]]
+  name = "is_generated"
+  type = "bool"
+  ops = ["eq"]
+
+  [[action.field]]
+  name = "environment"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["dev", "staging", "prod", "unknown"]
+
+  [[action.field]]
+  name = "timeout_ms"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+[[action]]
+domain = "compute"
+domain_label = "Compute / Local Tool Execution"
+id = "package_install"
+label = "Install a dependency"
+coarse_verb = "tool_call"
+target_type = "host"
+target_label = "Source registry host"
+
+  [[action.field]]
+  name = "package_manager"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["pip", "npm", "pnpm", "yarn", "cargo", "go", "gem", "apt", "brew", "maven", "gradle", "other"]
+
+  [[action.field]]
+  name = "package_name"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "environment"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["dev", "staging", "prod", "unknown"]
+
+  [[action.field]]
+  name = "is_pinned"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "compute"
+domain_label = "Compute / Local Tool Execution"
+id = "datastore_read"
+label = "Narrow datastore read (SELECT/GET, no bulk, no egress)"
+coarse_verb = "tool_call"
+target_type = "resource"
+target_label = "Datastore / table"
+
+  [[action.field]]
+  name = "datastore_type"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["sql", "kv", "object_store", "search_index", "other"]
+
+  [[action.field]]
+  name = "query_text"
+  type = "string"
+  ops = ["matches", "eq"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "table_names"
+  type = "string"
+  ops = ["matches", "in"]
+
+  [[action.field]]
+  name = "row_count_estimate"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "environment"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["dev", "staging", "prod", "unknown"]
+
+[[action]]
+domain = "compute"
+domain_label = "Compute / Local Tool Execution"
+id = "process_control"
+label = "Control a process / service (start / stop / kill / restart)"
+coarse_verb = "tool_call"
+target_type = "resource"
+target_label = "Process / service"
+
+  [[action.field]]
+  name = "operation"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["start", "stop", "kill", "signal", "restart"]
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "controller"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["kill", "pkill", "systemctl", "service", "docker", "kubectl", "supervisorctl", "other"]
+
+  [[action.field]]
+  name = "environment"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["dev", "staging", "prod", "unknown"]
+
+[[action]]
+domain = "browser"
+domain_label = "Browser / Computer-Use UI"
+id = "navigate"
+label = "Navigate to a page"
+coarse_verb = "http_request"
+target_type = "url"
+target_label = "Destination URL"
+
+  [[action.field]]
+  name = "origin"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["browser_driver", "browser_form", "messaging_sdk", "payment_sdk", "agent_protocol", "storage_sdk", "sdk", "proxy"]
+
+  [[action.field]]
+  name = "url"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "path"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "http_method"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
+
+[[action]]
+domain = "browser"
+domain_label = "Browser / Computer-Use UI"
+id = "click"
+label = "Click an element"
+coarse_verb = "tool_call"
+target_type = "selector"
+target_label = "Element"
+
+  [[action.field]]
+  name = "selector"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "interaction"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["click", "dblclick", "hover", "drag", "drop", "contextmenu"]
+
+  [[action.field]]
+  name = "element_role"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["button", "link", "input", "select", "checkbox", "radio", "menuitem", "tab", "other"]
+
+  [[action.field]]
+  name = "element_text"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "causes_navigation"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "browser"
+domain_label = "Browser / Computer-Use UI"
+id = "type_text"
+label = "Type into an input"
+coarse_verb = "tool_call"
+target_type = "selector"
+target_label = "Input element"
+
+  [[action.field]]
+  name = "selector"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "url"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "input_type"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["text", "password", "email", "number", "search", "tel", "url", "date", "file", "other"]
+
+  [[action.field]]
+  name = "pii_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+[[action]]
+domain = "browser"
+domain_label = "Browser / Computer-Use UI"
+id = "key_press"
+label = "Press a key / hotkey (no element)"
+coarse_verb = "tool_call"
+target_type = "url"
+target_label = "Page"
+
+  [[action.field]]
+  name = "key_combo"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "url"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+[[action]]
+domain = "browser"
+domain_label = "Browser / Computer-Use UI"
+id = "clipboard"
+label = "Read / write clipboard"
+coarse_verb = "tool_call"
+target_type = "url"
+target_label = "Page"
+
+  [[action.field]]
+  name = "direction"
+  type = "enum"
+  ops = ["eq"]
+  values = ["read", "write"]
+
+  [[action.field]]
+  name = "url"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "pii_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+[[action]]
+domain = "browser"
+domain_label = "Browser / Computer-Use UI"
+id = "submit_form"
+label = "Submit a form (no file)"
+coarse_verb = "http_request"
+target_type = "url"
+target_label = "Form action URL"
+
+  [[action.field]]
+  name = "origin"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["browser_driver", "browser_form", "messaging_sdk", "payment_sdk", "agent_protocol", "storage_sdk", "sdk", "proxy"]
+
+  [[action.field]]
+  name = "url"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "http_method"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
+
+  [[action.field]]
+  name = "pii_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+[[action]]
+domain = "browser"
+domain_label = "Browser / Computer-Use UI"
+id = "observe_page"
+label = "Observe page (screenshot / scroll / read DOM — no script)"
+coarse_verb = "tool_call"
+target_type = "url"
+target_label = "Page"
+
+  [[action.field]]
+  name = "url"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "observe_kind"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["screenshot", "scroll", "read_dom", "read_text"]
+
+  [[action.field]]
+  name = "full_page"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "network"
+domain_label = "Network / HTTP API Egress"
+id = "http_read"
+label = "HTTP read (GET / HEAD)"
+coarse_verb = "http_request"
+target_type = "host"
+target_label = "Destination host"
+
+  [[action.field]]
+  name = "origin"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["browser_driver", "browser_form", "messaging_sdk", "payment_sdk", "agent_protocol", "storage_sdk", "sdk", "proxy"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "in", "matches"]
+
+  [[action.field]]
+  name = "path"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "http_method"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
+
+  [[action.field]]
+  name = "has_credentials"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "network"
+domain_label = "Network / HTTP API Egress"
+id = "http_write"
+label = "HTTP write (POST / PUT / PATCH) — residual API mutation"
+coarse_verb = "http_request"
+target_type = "host"
+target_label = "Destination host"
+
+  [[action.field]]
+  name = "origin"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["browser_driver", "browser_form", "messaging_sdk", "payment_sdk", "agent_protocol", "storage_sdk", "sdk", "proxy"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "in", "matches"]
+
+  [[action.field]]
+  name = "path"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "http_method"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
+
+  [[action.field]]
+  name = "content_type"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "resource_kind"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["generic", "calendar_event", "ticket", "doc", "share_permission", "other"]
+
+  [[action.field]]
+  name = "request_bytes"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "has_credentials"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "network"
+domain_label = "Network / HTTP API Egress"
+id = "send_message"
+label = "Send a message (email / chat / SMS / ticket / public post)"
+coarse_verb = "http_request"
+target_type = "recipient"
+target_label = "Recipient / channel"
+
+  [[action.field]]
+  name = "origin"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["browser_driver", "browser_form", "messaging_sdk", "payment_sdk", "agent_protocol", "storage_sdk", "sdk", "proxy"]
+
+  [[action.field]]
+  name = "channel"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["email", "slack", "teams", "sms", "ticket", "public_post"]
+
+  [[action.field]]
+  name = "recipient"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "audience"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["internal", "external", "public", "unknown"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "has_attachment"
+  type = "bool"
+  ops = ["eq"]
+
+  [[action.field]]
+  name = "pii_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+[[action]]
+domain = "network"
+domain_label = "Network / HTTP API Egress"
+id = "read_message"
+label = "Read messages / inbox / calendar / shared docs (inbound)"
+coarse_verb = "http_request"
+target_type = "resource"
+target_label = "Mailbox / channel / doc"
+
+  [[action.field]]
+  name = "channel"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["email", "slack", "teams", "calendar", "doc_store", "other"]
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "classification"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["public", "internal", "confidential", "restricted", "unknown"]
+
+  [[action.field]]
+  name = "pii_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+[[action]]
+domain = "payment"
+domain_label = "Payment / Financial Transaction"
+id = "authorize_payment"
+label = "Authorize a payment"
+coarse_verb = "payment"
+target_type = "payee"
+target_label = "Payee"
+
+  [[action.field]]
+  name = "payee"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "amount"
+  type = "money"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "currency"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "USDC", "USDT", "other"]
+
+  [[action.field]]
+  name = "rail"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["x402", "ap2", "visa_tap", "mastercard_agent_pay", "stripe_acp", "ach", "wire", "other"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+[[action]]
+domain = "payment"
+domain_label = "Payment / Financial Transaction"
+id = "refund_payment"
+label = "Issue a refund / reversal"
+coarse_verb = "payment"
+target_type = "payee"
+target_label = "Original payee / customer"
+
+  [[action.field]]
+  name = "payee"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "amount"
+  type = "money"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "currency"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "USDC", "USDT", "other"]
+
+  [[action.field]]
+  name = "rail"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["x402", "ap2", "visa_tap", "mastercard_agent_pay", "stripe_acp", "ach", "wire", "other"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+[[action]]
+domain = "payment"
+domain_label = "Payment / Financial Transaction"
+id = "change_billing"
+label = "Change billing / subscription / payment method"
+coarse_verb = "payment"
+target_type = "payee"
+target_label = "Billing account"
+
+  [[action.field]]
+  name = "payee"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "surface"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["stripe_billing", "cloud_billing", "saas_billing", "other"]
+
+  [[action.field]]
+  name = "billing_action"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["add_payment_method", "remove_payment_method", "change_plan", "change_limit", "upgrade", "downgrade"]
+
+  [[action.field]]
+  name = "amount"
+  type = "money"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "currency"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "USDC", "USDT", "other"]
+
+[[action]]
+domain = "data"
+domain_label = "Data Egress / Bulk Movement"
+id = "export"
+label = "Export / exfiltrate data to an open-ended destination"
+coarse_verb = "data_export"
+target_type = "host"
+target_label = "Destination host"
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "row_count_estimate"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "format"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["csv", "json", "parquet", "sql", "xml", "xlsx", "pdf", "archive", "raw"]
+
+  [[action.field]]
+  name = "classification"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["public", "internal", "confidential", "restricted", "unknown"]
+
+  [[action.field]]
+  name = "pii_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+  [[action.field]]
+  name = "phi_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+  [[action.field]]
+  name = "redacted"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "data"
+domain_label = "Data Egress / Bulk Movement"
+id = "bulk_read"
+label = "Bulk read / scan (no immediate egress)"
+coarse_verb = "data_export"
+target_type = "resource"
+target_label = "Source table / index"
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "row_count_estimate"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "classification"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["public", "internal", "confidential", "restricted", "unknown"]
+
+  [[action.field]]
+  name = "pii_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+  [[action.field]]
+  name = "phi_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+  [[action.field]]
+  name = "environment"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["dev", "staging", "prod", "unknown"]
+
+[[action]]
+domain = "data"
+domain_label = "Data Egress / Bulk Movement"
+id = "share_external"
+label = "Share data to a named third party"
+coarse_verb = "data_export"
+target_type = "recipient"
+target_label = "External recipient"
+
+  [[action.field]]
+  name = "recipient"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "recipient_category"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["customer", "partner", "vendor", "regulator", "processor", "subprocessor", "unknown"]
+
+  [[action.field]]
+  name = "row_count_estimate"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "classification"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["public", "internal", "confidential", "restricted", "unknown"]
+
+  [[action.field]]
+  name = "pii_status"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["not_scanned", "clean", "found"]
+
+  [[action.field]]
+  name = "dpa_signed"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "data"
+domain_label = "Data Egress / Bulk Movement"
+id = "read_secret"
+label = "Read a credential / secret"
+coarse_verb = "data_export"
+target_type = "resource"
+target_label = "Secret"
+
+  [[action.field]]
+  name = "secret_store"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["env", "file", "vault", "aws_sm", "gcp_sm", "azure_kv", "k8s", "other"]
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "is_privileged"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "storage"
+domain_label = "Files / Object Storage"
+id = "write_file"
+label = "Write / create / metadata-preserving move of a file"
+coarse_verb = "tool_call"
+target_type = "path"
+target_label = "File path"
+
+  [[action.field]]
+  name = "path"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "operation"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["create", "write", "append", "rename_same_device", "chmod", "mkdir"]
+
+  [[action.field]]
+  name = "bytes"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "mime_type"
+  type = "string"
+  ops = ["eq", "in", "matches"]
+
+  [[action.field]]
+  name = "is_outside_workspace"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "storage"
+domain_label = "Files / Object Storage"
+id = "read_file"
+label = "Read a file (non-secret)"
+coarse_verb = "tool_call"
+target_type = "path"
+target_label = "File path"
+
+  [[action.field]]
+  name = "path"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "bytes"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "mime_type"
+  type = "string"
+  ops = ["eq", "in", "matches"]
+
+  [[action.field]]
+  name = "is_outside_workspace"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "storage"
+domain_label = "Files / Object Storage"
+id = "transfer_object"
+label = "Upload / download object to remote storage"
+coarse_verb = "http_request"
+target_type = "host"
+target_label = "Storage host"
+
+  [[action.field]]
+  name = "origin"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["browser_driver", "browser_form", "messaging_sdk", "payment_sdk", "agent_protocol", "storage_sdk", "sdk", "proxy"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "direction"
+  type = "enum"
+  ops = ["eq"]
+  values = ["upload", "download"]
+
+  [[action.field]]
+  name = "path"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "bytes"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "is_outside_workspace"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "identity"
+domain_label = "Identity / Access / Account"
+id = "change_access"
+label = "Grant / revoke role, permission, or share"
+coarse_verb = "account_change"
+target_type = "recipient"
+target_label = "Target principal"
+
+  [[action.field]]
+  name = "recipient"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "direction"
+  type = "enum"
+  ops = ["eq"]
+  values = ["grant", "revoke"]
+
+  [[action.field]]
+  name = "privilege_level"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["read", "write", "admin", "root"]
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "is_self_action"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "identity"
+domain_label = "Identity / Access / Account"
+id = "manage_principal"
+label = "Create / disable a user or service account"
+coarse_verb = "account_change"
+target_type = "recipient"
+target_label = "Principal"
+
+  [[action.field]]
+  name = "recipient"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "lifecycle"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["create", "disable", "suspend", "reenable"]
+
+  [[action.field]]
+  name = "principal_type"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["user", "service_account", "bot", "group"]
+
+  [[action.field]]
+  name = "is_privileged"
+  type = "bool"
+  ops = ["eq"]
+
+  [[action.field]]
+  name = "is_self_action"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "identity"
+domain_label = "Identity / Access / Account"
+id = "change_credential"
+label = "Rotate credential / change security setting"
+coarse_verb = "account_change"
+target_type = "recipient"
+target_label = "Secret holder"
+
+  [[action.field]]
+  name = "recipient"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "credential_type"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["api_key", "password", "ssh_key", "certificate", "token", "oauth_refresh", "mfa", "recovery_email"]
+
+  [[action.field]]
+  name = "invalidate_old"
+  type = "bool"
+  ops = ["eq"]
+
+  [[action.field]]
+  name = "is_self_action"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "automation"
+domain_label = "Automation / Persistence"
+id = "create_trigger"
+label = "Create a recurring/autonomous trigger or install an extension"
+coarse_verb = "account_change"
+target_type = "resource"
+target_label = "Trigger / extension"
+
+  [[action.field]]
+  name = "trigger_type"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["cron", "webhook", "event_subscription", "systemd_timer", "ci_pipeline", "mcp_server", "browser_extension", "queue_consumer", "other"]
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "is_recurring"
+  type = "bool"
+  ops = ["eq"]
+
+  [[action.field]]
+  name = "environment"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["dev", "staging", "prod", "unknown"]
+
+[[action]]
+domain = "destroy"
+domain_label = "Delete / Destroy"
+id = "delete_file"
+label = "Delete file or directory (incl. destructive overwrite/move)"
+coarse_verb = "delete"
+target_type = "path"
+target_label = "File path"
+
+  [[action.field]]
+  name = "path"
+  type = "string"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "observed_via"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["fs_hook", "object_sdk", "sql_proxy", "iac_tool", "http_delete"]
+
+  [[action.field]]
+  name = "bytes"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "is_directory"
+  type = "bool"
+  ops = ["eq"]
+
+  [[action.field]]
+  name = "is_outside_workspace"
+  type = "bool"
+  ops = ["eq"]
+
+  [[action.field]]
+  name = "backup_exists"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "destroy"
+domain_label = "Delete / Destroy"
+id = "delete_remote"
+label = "Delete remote resource (HTTP DELETE / object store / queue / VCS ref)"
+coarse_verb = "delete"
+target_type = "resource"
+target_label = "Remote resource"
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "observed_via"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["fs_hook", "object_sdk", "sql_proxy", "iac_tool", "http_delete"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "scope"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["single_object", "prefix", "queue", "api_record", "vcs_ref"]
+
+  [[action.field]]
+  name = "environment"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["dev", "staging", "prod", "unknown"]
+
+  [[action.field]]
+  name = "backup_exists"
+  type = "bool"
+  ops = ["eq"]
+
+[[action]]
+domain = "destroy"
+domain_label = "Delete / Destroy"
+id = "db_write"
+label = "Mutate database (INSERT/UPDATE/DELETE/ALTER/DROP)"
+coarse_verb = "delete"
+target_type = "resource"
+target_label = "Database table"
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "observed_via"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["fs_hook", "object_sdk", "sql_proxy", "iac_tool", "http_delete"]
+
+  [[action.field]]
+  name = "operation"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["insert", "update", "delete", "truncate", "alter", "drop", "create"]
+
+  [[action.field]]
+  name = "row_count_estimate"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+
+  [[action.field]]
+  name = "host"
+  type = "host"
+  ops = ["eq", "matches"]
+
+  [[action.field]]
+  name = "environment"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["dev", "staging", "prod", "unknown"]
+
+[[action]]
+domain = "destroy"
+domain_label = "Delete / Destroy"
+id = "infra_destroy"
+label = "Destroy / mutate cloud infrastructure"
+coarse_verb = "delete"
+target_type = "resource"
+target_label = "Infra resource"
+
+  [[action.field]]
+  name = "resource"
+  type = "string"
+  ops = ["eq", "matches", "in"]
+
+  [[action.field]]
+  name = "observed_via"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["fs_hook", "object_sdk", "sql_proxy", "iac_tool", "http_delete"]
+
+  [[action.field]]
+  name = "operation"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["create", "update", "delete", "destroy"]
+
+  [[action.field]]
+  name = "tool"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["terraform", "cloudformation", "kubectl", "aws_cli", "gcloud", "azure_cli", "pulumi", "other"]
+
+  [[action.field]]
+  name = "environment"
+  type = "enum"
+  ops = ["eq", "in"]
+  values = ["dev", "staging", "prod", "unknown"]
+
+  [[action.field]]
+  name = "plan_resource_count"
+  type = "number"
+  ops = ["gt", "lt", "eq"]
+

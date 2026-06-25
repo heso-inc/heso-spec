@@ -1,2 +1,24 @@
-﻿__pycache__/
+# HESO/1 reference verifier — Python
+
+# Python tooling
+__pycache__/
 *.pyc
+*.pyo
+.venv/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# Agent / editor / OS state
+.omc/
+.conductor/
+.cursor/
+.agents/
+.DS_Store
+*.swp
+
+# Env / secrets (keep .env.example)
+.env
+.env.*
+!.env.example

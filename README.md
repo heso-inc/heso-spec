@@ -1,85 +1,124 @@
-# HESO/1.0
+# HESO/1 — The Open Standard
 
-**An open protocol for auditable, independently-verifiable records of what an automated agent did on the web.**
+**An open standard for auditable, independently-verifiable records of what an automated agent did — verifiable offline, by anyone, with no engine, no network, no clock, and no trust in whoever produced it.**
 
-This repository is the HESO/1.0 **specification** plus two **independent reference verifiers** (Rust and Python) and a **machine-checkable conformance suite**. The point: anyone can verify a HESO run with nothing but the artifact and a tiny tool — **no engine, no network, no clock, and no trust in whoever produced it.**
+This repository is the **sole home** of the HESO/1 specification. Implementations
+(the Rust kernel, the SDKs, the cloud) vendor *from* here, pinned to a commit
+SHA; nothing shadows or privately forks the normative artifacts.
 
-- Spec: [`HESO-1.0.md`](./HESO-1.0.md)
-- Conformance vectors: [`vectors/heso-1.0-vectors.json`](./vectors/heso-1.0-vectors.json)
-- Reference verifier + harness: [`verifier/`](./verifier/)
-- Try-me artifact: [`examples/sample-sealed-plat.json`](./examples/sample-sealed-plat.json)
+HESO's business is in the rails + assurance, not in owning the spec — so the
+thing that decides "what did this agent action *do*" is open, hashed, and
+independently re-implementable from prose + TOML + vectors.
 
 ---
 
-## What HESO/1.0 proves — and what it does not
+## What HESO/1 covers
 
-HESO/1.0 ("**Grade 0**") gives you **consistency, tamper-evidence, and reproducibility**: a verifier can confirm a sealed run is byte-for-byte what was signed, and that it reproduces from its recorded network trace. Change one byte and verification fails.
+HESO/1 is a **suite of independently-versioned, independently-conformance-claimable
+modules** — not one omnibus document. You can conform to "action-receipt + chain +
+transparency" without claiming time-anchor or quorum.
 
-It does **not** prove the content reflects reality against an *untrusted operator*. Whoever ran the agent holds the signing key and can mint a fresh, perfectly valid record of anything — they never need to *edit* a record, they author it. Closing that gap requires a trust anchor outside the operator (a notary, a TEE, or a cooperating origin) and is **out of scope for HESO/1.0** — see §0.1 and the trust grades in §5 of the spec.
+| Module | File | What it is |
+|---|---|---|
+| **taxonomy** | [`modules/taxonomy.md`](./modules/taxonomy.md) + [`taxonomy.toml`](./taxonomy.toml) | The crown jewel: the structural, classify-by-effect destructive-primitive taxonomy (`move-value` / `destroy` / `change-authority` / `disclose` / `execute`), hashed and versioned. |
+| **action-receipt** | [`modules/action-receipt.md`](./modules/action-receipt.md) (+ [`action-receipt-v1.md`](./modules/action-receipt-v1.md)) | The signed, canonicalized record of one classified agent action. v2 default; v1 frozen for byte-stable legacy receipts. |
+| **chain** | [`modules/chain.md`](./modules/chain.md) | The BLAKE3 hash-linked per-session audit chain over receipts. |
+| **transparency** | [`modules/transparency.md`](./modules/transparency.md) | RFC-6962 Merkle inclusion + consistency proofs over receipt commitments. |
+| **time-anchor** | [`modules/time-anchor.md`](./modules/time-anchor.md) | RFC-3161 trusted-timestamp binding over a receipt/checkpoint. |
+| **quorum** | [`modules/quorum.md`](./modules/quorum.md) | k-of-n approval re-derivation semantics. |
+| **envelope** | [`modules/envelope.md`](./modules/envelope.md) | in-toto Statement + DSSE binding; a HESO/1 `predicateType` whose predicate schema *is* the taxonomy. |
+| **web-observation** | [`HESO-1.0.md`](./HESO-1.0.md) / [`modules/web-observation.md`](./modules/web-observation.md) | The original plat / cassette / sealed-plat web-observation format. **Demoted** from "the spec" to one module of the suite. |
+| **taxonomy-extension registry** | [`modules/taxonomy-extension-registry.md`](./modules/taxonomy-extension-registry.md) + [`registry.toml`](./registry.toml) | The open, machine-readable, namespaced registry for taxonomy extensions. |
+| **auditor catalog** | [`catalog.toml`](./catalog.toml) | The open descriptive label layer riding on the taxonomy spine. |
+| **conformance vectors + verifier** | [`vectors/`](./vectors/), [`verifier/`](./verifier/) | The byte-checkable golden corpus + the clean-room Python verifier (a second implementation, independent of the Rust kernel). |
 
-In short: **Grade 0 proves a record is intact and reproducible. It does not prove it was born honest.** Be precise about that when you build on it.
+**The standard deliberately does NOT cover** the plan-gated assurance product —
+the compliance `controls.toml` + packs, the commitment store, the reconciliation
+engine, and the proof/exhibit builder. Those live in the closed cloud repo. The
+line is sharp on purpose: **a third party can implement and verify everything in
+this repo without paying HESO a cent.**
+
+---
+
+## What HESO/1 proves — and what it does not
+
+HESO/1 gives you **consistency, tamper-evidence, and reproducibility**: a verifier
+can confirm a signed record is byte-for-byte what was signed, that it chains to
+its session, and that it sits in the transparency log. Change one byte and
+verification fails.
+
+It does **not** by itself prove the content reflects reality against an *untrusted
+operator* — whoever ran the agent holds the signing key and can author a fresh,
+valid record. Closing that gap requires a trust anchor outside the operator (a
+notary, a TEE, a transparency witness) and is addressed by the transparency and
+time-anchor modules and the trust grades. Be precise about that when you build on
+it.
 
 ---
 
 ## Quickstart — verify a run three independent ways
 
-A real signed record ships at [`examples/sample-sealed-plat.json`](./examples/sample-sealed-plat.json). Every verifier below exits `0` for a valid record and non-zero when it rejects one.
+A real signed record ships at [`examples/sample-sealed-plat.json`](./examples/sample-sealed-plat.json). Every verifier exits `0` for a valid record and non-zero when it rejects one.
 
-### 1. Python reference verifier (no Rust, ~150 lines)
+### 1. Python clean-room verifier (no Rust)
 
 ```sh
 cd verifier
 pip install -r requirements.txt
 python heso_verify.py ../examples/sample-sealed-plat.json
 ```
-```
-OK Valid
-```
-Tamper one byte (e.g. change `content.title`) and it refuses:
-```
-FAIL HashMismatch          # exit 2
-```
+Tamper one byte and it refuses (`FAIL HashMismatch`, exit 2).
 
-### 2. Standalone Rust verifier (tiny dependency surface, no engine)
+### 2. Standalone Rust verifier (reference impl)
 
-From the runtime repo ([github.com/heso-inc/heso](https://github.com/heso-inc/heso)):
+From the kernel repo:
 ```sh
 cargo run -p heso-verify -- /path/to/sample-sealed-plat.json
-# or install a standalone binary:  cargo install --path crates/heso-verify
 ```
-```
-OK sealed-plat bc272895d75d0d780e6304e2cbd15a7a67819a3909c1aa5c51f7b5bbb28abccf (O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik=)
-```
-A tampered record prints `FAIL sealed-plat / HASH MISMATCH` and exits 2.
+A tampered record prints `FAIL … HASH MISMATCH` and exits 2.
 
-### 3. Conformance suite (prove a new implementation is correct)
+### 3. Conformance suite
 
 ```sh
 cd verifier
-python run_vectors.py          # plat_hash + sealed-signature vectors
-python conformance_check.py    # canonical-bytes interop vs the reference
+python run_vectors.py
+python conformance_check.py
 ```
-Both check every case in `vectors/heso-1.0-vectors.json`. The interop check is the load-bearing one: Python (`rfc8785`) and the Rust reference (`serde_jcs`) produce **byte-identical** canonical JSON, and each verifies the other's signatures — that's what makes "anyone can verify" true rather than asserted.
+The interop check is the load-bearing one: Python (`rfc8785`) and the Rust
+reference (`serde_jcs`) produce **byte-identical** canonical JSON and each
+verifies the other's signatures — that is what makes "anyone can verify" true
+rather than asserted. Vectors are **generated from the reference, never hand-edited**.
 
 ---
 
-## Repo layout
+## Governance
 
-| Path | What |
+A real open standard needs the artifacts that let it be safely extended and
+trusted. They live here:
+
+| Doc | What |
 |---|---|
-| `HESO-1.0.md` | The protocol spec (plat, cassette, sealed envelope, determinism, trust grades). |
-| `vectors/heso-1.0-vectors.json` | Conformance vectors. Every constant is generated by the reference implementation — never hand-edited. |
-| `verifier/heso_verify.py` | Python reference verifier (also a CLI). |
-| `verifier/run_vectors.py`, `conformance_check.py` | The conformance harness. |
-| `verifier/requirements.txt` | `rfc8785`, `cryptography`, `blake3`. |
-| `examples/sample-sealed-plat.json` | A valid sealed record to verify. |
-| `LICENSE` / `NOTICE` | CC BY 4.0 (spec) + trademark reservation. |
+| [`GOVERNANCE.md`](./GOVERNANCE.md) | Versioning + extension policy: how the suite versions, what a breaking change is, how `taxonomy_hash` gates compatibility, and the RFC → ADR spec-change process. |
+| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | How to propose a normative change, and the **conformance-vector requirement** for any behavior-affecting change. |
+| [`CHANGELOG.md`](./CHANGELOG.md) | Per-module change history. |
+| [`SECURITY.md`](./SECURITY.md) | Private vulnerability-disclosure process. |
+| [`registry.toml`](./registry.toml) | The machine-readable taxonomy-extension registry. |
 
-## Implementations
-
-- **Rust** — the reference runtime that *produces* HESO records, plus the standalone `heso-verify` crate (the single source of truth for verification): [github.com/heso-inc/heso](https://github.com/heso-inc/heso).
-- **Python** — the from-scratch reference verifier in [`verifier/`](./verifier/), built from this spec alone to prove it's implementable without sharing code.
+---
 
 ## License
 
-The specification is **CC BY 4.0**. The conformance vectors are **CC0** (public domain). Anyone may build a conformant implementation and describe it as "HESO/1.0-conformant"; the **HESO** name itself is reserved — see [`NOTICE`](./NOTICE).
+The license boundary is the **repo** boundary — everything here is the open
+standard.
+
+- **Specification text** — this README, [`HESO-1.0.md`](./HESO-1.0.md), everything
+  under [`modules/`](./modules/), the governance docs, and the data files'
+  normative prose — is **CC BY 4.0**. SPDX: `CC-BY-4.0`. See [`LICENSE`](./LICENSE).
+- **Conformance vectors** ([`vectors/`](./vectors/)) are **CC0** (public domain),
+  so anyone can run conformance with zero friction. SPDX: `CC0-1.0`.
+- [`catalog.toml`](./catalog.toml) is open, but a deliberate descriptive layer —
+  not the structural spine.
+
+Anyone may build a conformant implementation and describe it as
+"HESO/1-conformant". The **HESO** name itself is a reserved trademark — see
+[`NOTICE`](./NOTICE).
