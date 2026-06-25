@@ -653,7 +653,6 @@
       "execute"
     ],
     "provenance": "spec-derived",
-    "reconciliation_state_default": "pending",
     "source": "commitment-store.md \u00a73.1 (primitive_enum) + taxonomy_classify goldens",
     "taxonomy_hash": "f3e51823a40ec0b869cbce70032657f66c31c0e8293995fe56f223e4ccdc4bb5"
   },

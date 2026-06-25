@@ -485,8 +485,8 @@ def main() -> int:
     assert wire_chained["chain_prev"] == wire_genesis["chain_head"], "chain link must thread"
 
     # Case 3: a BLOCKED move-value commitment (the destructive-primitive index +
-    # the decision=block path the reconciliation engine queries on). The receipt is
-    # still signed (the gate witnesses the attempt) but decision=block.
+    # the decision=block path). The receipt is still signed (the gate witnesses
+    # the attempt) but decision=block.
     block_content = fixed_content()
     block_content["action"] = {
         "verb": "payment",
@@ -631,7 +631,6 @@ def main() -> int:
         "source": "commitment-store.md §3.1 (primitive_enum) + taxonomy_classify goldens",
         "primitive_enum": ["move-value", "destroy", "change-authority", "disclose", "execute"],
         "decision_enum": ["allow", "block", "suspended"],
-        "reconciliation_state_default": "pending",
         "index_columns": [
             "organisation_id",
             "primitive",
