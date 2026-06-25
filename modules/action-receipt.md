@@ -200,7 +200,7 @@ body minted before the fields existed.
 | Field | Type | Verifier behavior |
 |---|---|---|
 | `action.ert` | `Ert?` | The signed Effected-Resource Tuple: the structural `observed_facts`, the pinned `taxonomy_hash`, and the derived `(resource_class, effect, egress)`. **Re-derivable**: a re-deriving verifier replays `classify(observed_facts, taxonomy@taxonomy_hash)` and FAILS CLOSED with `ClassificationMismatch` when the signed class ≠ the re-derived one (or the class's coarse verb ≠ the receipt's `verb`), or `TaxonomyUnavailable` when it does not embed the pinned taxonomy. A plain (non-re-deriving) `open_receipt` does NOT re-derive — a no-ERT receipt is unaffected. The pinned `taxonomy_hash` is the version anchor per ADR [0012](../../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md). |
-| `action.mandate` | `MandateBinding?` | The payment mandate facts bound to the action (id, integrity hash, verdict, authorized payee/amount/currency). On a `payment` receipt whose bound `verdict` is `Invalid`/`Absent`, `open_receipt` FAILS CLOSED with `MandateRejected`. A payment with NO binding is left to the policy floor at gate time, not failed here; a non-payment receipt is unaffected. |
+| `action.mandate` | `MandateBinding?` | The payment mandate facts bound to the action (id, integrity hash, `mandate_status`, authorized payee/amount/currency). On a `payment` receipt whose bound `mandate_status` is `Invalid`/`Absent`, `open_receipt` FAILS CLOSED with `MandateRejected`. A payment with NO binding is left to the policy floor at gate time, not failed here; a non-payment receipt is unaffected. |
 
 ---
 

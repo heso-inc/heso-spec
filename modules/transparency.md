@@ -4,7 +4,7 @@
 
 The transparency module specifies an [RFC 6962](https://datatracker.ietf.org/doc/html/rfc6962) SHA-256 Merkle tree over HESO Action Receipts and the two offline proof primitives — **inclusion** and **consistency** — that let an independent, off-the-shelf RFC-6962 verifier check, with **no HESO-specific code**, that a receipt sits in the tree and that the tree has only ever grown.
 
-This module is the *format and proof* spec. It defines the leaf shape, the tree hashing, the proof verification rules, and the interop reference vectors. It is deliberately silent on *who operates the log* and *how proofs are transported*; the witnessed-network topology (checkpoints, cosignatures, tile serving) is a separate concern bound to the [Tessera / `tlog-tiles`](../../redesign/decisions/0008-tessera-transparency-network.md) decision and is summarised, not specified, in [§6](#6-the-witnessed-network-forward-slot).
+This module is the *format and proof* spec. It defines the leaf shape, the tree hashing, the proof verification rules, and the interop reference vectors. It is deliberately silent on *who operates the log* and *how proofs are transported*; the witnessed-network topology (checkpoints, cosignatures, tile serving) was a separate concern bound to the [Tessera / `tlog-tiles`](../../redesign/decisions/0008-tessera-transparency-network.md) decision, now superseded, and is summarised for history, not specified, in [§6](#6-the-witnessed-network-forward-slot-superseded).
 
 This module layers *on top of* the [action-receipt](./action-receipt.md) and [chain](./chain.md) modules. A receipt is valid on its own; transparency is an evidence substrate over the **order** receipts were logged in, **outside** the signed receipt content. It is conformance-claimable independently: an implementation MAY conform to `action-receipt` + `chain` + `transparency` without claiming `envelope`, `time-anchor`, or `quorum`.
 
@@ -33,7 +33,7 @@ The tree's leaves are the **audit chain's `action_hash` values, in `seq` order**
 - Leaf `i` MUST be `leaf_value(entry[i].action_hash)`, where `entry[i].seq == i`.
 - The leaf set MUST be the receipts in strict `seq` order with no gaps, reorders, or duplicates. Order is defined by the chain, not by wall-clock time.
 
-> **Privacy boundary (normative).** A leaf is a 32-byte BLAKE3 *commitment*, never a receipt body. An implementation MUST NOT place raw action content into a transparency leaf. This makes "raw content never leaves the customer boundary" a property of the format itself: a tree built per this module reveals only fingerprints and order. (The witnessed-network engine additionally enforces a 64 KB entry cap as a mechanical backstop — see [§6](#6-the-witnessed-network-forward-slot).)
+> **Privacy boundary (normative).** A leaf is a 32-byte BLAKE3 *commitment*, never a receipt body. An implementation MUST NOT place raw action content into a transparency leaf. This makes "raw content never leaves the customer boundary" a property of the format itself: a tree built per this module reveals only fingerprints and order. (The historical witnessed-network engine additionally enforced a 64 KB entry cap as a mechanical backstop — see [§6](#6-the-witnessed-network-forward-slot-superseded).)
 
 ### 2.1 The leaf-value bridge
 
@@ -108,7 +108,7 @@ Transparency lives **outside** the signed content of an Action Receipt.
 - The receipt verifier ([action-receipt §verify order](./action-receipt.md)) MUST NOT require transparency to be present, and MUST NOT treat an absent or empty `transparency[]` as a verification failure. A receipt verifies precisely on its content and signatures.
 - A relying party that wants tree-membership assurance composes the [§3](#3-rfc-6962-tree-hashing) primitives itself over the receipts it holds: decode each `action_hash` via [`leaf_value`](#21-the-leaf-value-bridge), order by chain `seq`, and run `verify_inclusion` / `verify_consistency` against a root it has obtained.
 
-> **Honesty boundary (normative).** Transparency proves **inclusion and append-only order**, not **truth**. An inclusion proof shows a receipt is in *a* tree at *a* position; it does not show the content is accurate, nor — on its own — that the operator showed the *same* tree to everyone (the split-view / equivocation problem). Split-view defense requires an independent witness whose key is outside the operator's control; see [§6](#6-the-witnessed-network-forward-slot). An implementation MUST NOT describe a bare inclusion proof as "witnessed accountability" or "public transparency."
+> **Honesty boundary (normative).** Transparency proves **inclusion and append-only order**, not **truth**. An inclusion proof shows a receipt is in *a* tree at *a* position; it does not show the content is accurate, nor — on its own — that the operator showed the *same* tree to everyone (the split-view / equivocation problem). Split-view defense requires an independent witness whose key is outside the operator's control; see the superseded [§6](#6-the-witnessed-network-forward-slot-superseded). Transparency never proves the trail is *complete*: it proves order and inclusion for the receipts that exist, nothing about actions that never produced a receipt. An implementation MUST NOT describe a bare inclusion proof as "witnessed accountability" or "public transparency," nor as evidence of completeness.
 
 ---
 
@@ -144,19 +144,21 @@ These roots, the full per-leaf inclusion sets, and the `old_size ∈ {1,2,3,4,6}
 
 ---
 
-## 6. The witnessed-network forward slot
+## 6. The witnessed-network forward slot (superseded)
 
-A transparency tree on its own does not stop a malicious log operator from showing **different verifiers different trees** (a split view / equivocation). The standard defense is a signed, append-only **checkpoint** cross-checked by an independent **witness**.
+> **Superseded 2026-06-24.** The witnessed-network engine ([ADR 0008](../../redesign/decisions/0008-tessera-transparency-network.md)) backed an equivocation / split-view defense that was used to argue trail *completeness*. Under the positive-receipt model a receipt is positive admissible proof of what went through the gate, and absence of a receipt is silence, never an accusation, so that completeness story is dropped. This section is kept for history. Nothing in it claims completeness, and an implementation MUST NOT describe a transparency proof as proof that the trail is complete. The offline proof math in [§2](#2-leaves)–[§5](#5-interop-reference-vectors) is unaffected and remains the live, normative part of this module.
 
-This module specifies the **format and the offline proof math** ([§2](#2-leaves)–[§5](#5-interop-reference-vectors)) — the part a relying party needs to verify proofs it is handed. The **witnessed network** that produces and serves those proofs (checkpoint signing, witness cosignatures, the C2SP signed-note / `tlog-checkpoint` wire format, tile serving) is bound to the [Tessera / `tlog-tiles` decision (ADR 0008)](../../redesign/decisions/0008-tessera-transparency-network.md) and lives in the proof-and-transparency architecture, not in this format spec.
+A transparency tree on its own does not stop a malicious log operator from showing **different verifiers different trees** (a split view / equivocation). The historical defense was a signed, append-only **checkpoint** cross-checked by an independent **witness**.
 
-Where ADR 0008 informs the **wire/leaf shape**, this module is aligned with it:
+This module specifies the **format and the offline proof math** ([§2](#2-leaves)–[§5](#5-interop-reference-vectors)) — the part a relying party needs to verify proofs it is handed. The **witnessed network** that would produce and serve those proofs (checkpoint signing, witness cosignatures, the C2SP signed-note / `tlog-checkpoint` wire format, tile serving) was bound to the now-superseded [Tessera / `tlog-tiles` decision (ADR 0008)](../../redesign/decisions/0008-tessera-transparency-network.md).
 
-- **Leaf = BLAKE3 commitment, never a body.** Tessera's 64 KB entry cap mechanically backstops the [§2](#2-leaves) commitment-only rule — a full receipt body would not fit.
-- **`tlog-tiles` read API.** The witnessed network serves entries as tiles per `c2sp.org/tlog-tiles`, so a C2SP-compatible client obtains the [§3](#3-rfc-6962-tree-hashing) inclusion/consistency proofs with off-the-shelf tooling. The leaf and tree-hashing rules in this module are exactly the ones a `tlog-tiles` client expects.
-- **Checkpoints carry a root.** A signed checkpoint commits to a `(tree_size, root)`; verifying a checkpoint signature and a witness cosignature is the split-view defense layered *on top of* the proof primitives here. The note/cosignature format is normative in the witnessed-network spec, not here.
+Where ADR 0008 informed the **wire/leaf shape**, this module remains aligned with it on the format only:
 
-The forward slot layers on top of [§3](#3-rfc-6962-tree-hashing) **without changing** the leaf rule, the tree hashing, or the receipt verify order. A conformant `transparency` implementation that ships only the offline proof primitives is conformant for this module; the witnessed-network guarantees are an additional, separately-specified surface.
+- **Leaf = BLAKE3 commitment, never a body.** A 64 KB entry cap mechanically backstops the [§2](#2-leaves) commitment-only rule — a full receipt body would not fit.
+- **`tlog-tiles` read API.** Serving entries as tiles per `c2sp.org/tlog-tiles` lets a C2SP-compatible client obtain the [§3](#3-rfc-6962-tree-hashing) inclusion/consistency proofs with off-the-shelf tooling. The leaf and tree-hashing rules in this module are exactly the ones a `tlog-tiles` client expects.
+- **Checkpoints carry a root.** A signed checkpoint commits to a `(tree_size, root)`; a checkpoint + witness cosignature is a split-view defense layered *on top of* the proof primitives here. It proves the operator did not rewrite or fork the tree. It does NOT prove the tree contains every action that ever happened.
+
+The forward slot layers on top of [§3](#3-rfc-6962-tree-hashing) **without changing** the leaf rule, the tree hashing, or the receipt verify order. A conformant `transparency` implementation that ships only the offline proof primitives is conformant for this module.
 
 ---
 
@@ -178,5 +180,5 @@ A different tree hash or a different leaf rule is a **breaking change** and MUST
 - [chain.md](./chain.md) — the BLAKE3 session chain that defines leaf order (`seq`).
 - [envelope.md](./envelope.md) — the in-toto/DSSE envelope; a relying party's full check is *verify the envelope* **then** *verify the inclusion proof* defined here.
 - [conformance-and-envelope.md](../../redesign/standard/conformance-and-envelope.md) — the conformance model, the `rfc6962-roots` vectors, and the clean-room verifiers.
-- [ADR 0008 — Tessera / `tlog-tiles`](../../redesign/decisions/0008-tessera-transparency-network.md) — the witnessed-network engine and the wire/leaf shape this module aligns to.
+- [ADR 0008 — Tessera / `tlog-tiles`](../../redesign/decisions/0008-tessera-transparency-network.md) (Superseded 2026-06-24) — the historical witnessed-network engine and the wire/leaf shape this module's format aligns to. The completeness story it backed is dropped under the positive-receipt model; the offline proof math here is unaffected. See [§6](#6-the-witnessed-network-forward-slot-superseded).
 - [ADR 0012 — pin at signing](../../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md) — the immutable-version discipline mirrored in [§7](#7-versioning).
