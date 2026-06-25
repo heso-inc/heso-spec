@@ -1,0 +1,29 @@
+name: actionlint
+
+# Lints workflow YAML for syntax errors, bad ${{ }} expressions, shellcheck
+# issues inside run: blocks, and deprecated runner images. Uses the official
+# rhysd download script (no third-party action to trust); the binary lands in
+# the working dir, so we invoke ./actionlint directly with no expression in run.
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Download actionlint
+        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+        shell: bash
+      - name: Run actionlint
+        run: ./actionlint -color
+        shell: bash
