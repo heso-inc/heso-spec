@@ -644,7 +644,7 @@
       "chain_head",
       "signer_fpr"
     ],
-    "note": "primitive_enum here uses the hyphenated spine spelling (move-value, change-authority) matching taxonomy_classify in heso-1.0-crown-vectors.json and ADR-0001; the Postgres `primitive_enum` in commitment-store.md \u00a73.1 uses the underscore form (move_value, change_authority) \u2014 same five values, the SQL identifier just can't contain a hyphen. The wire carries the hyphenated spine token; the DB enum is its 1:1 underscore mapping.",
+    "note": "primitive_enum here uses the hyphenated spine spelling (move-value, change-authority) matching taxonomy_classify in heso-1.0-crown-vectors.json and ADR-0001; the Postgres `primitive_enum` in commitment-store.md \u00a73.1 uses the underscore form (move_value, change_authority) \u2014 same five values, the SQL identifier just can't contain a hyphen. The wire carries the hyphenated spine token; the DB enum is its 1:1 underscore mapping. reconciliation_state_default is a reserved post-pivot legacy field retained for wire-format stability; no active service queries it.",
     "primitive_enum": [
       "move-value",
       "destroy",
