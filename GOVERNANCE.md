@@ -37,9 +37,8 @@ descriptive, not the structural spine. Edits to it are governed for collision-
 freedom but **never move `taxonomy_hash`** (§4.3).
 
 **Out of scope of this standard** (governed elsewhere, in the closed cloud):
-compliance `controls.toml`, the compliance packs, the commitment store, the
-reconciliation engine, and the proof/exhibit builder. See the spec map's
-open/closed split.
+compliance `controls.toml`, the compliance packs, the commitment store, and the
+proof/exhibit builder. See the spec map's open/closed split.
 
 ---
 

@@ -33,10 +33,10 @@ transparency" without claiming time-anchor or quorum.
 | **conformance vectors + verifier** | [`vectors/`](./vectors/), [`verifier/`](./verifier/) | The byte-checkable golden corpus + the clean-room Python verifier (a second implementation, independent of the Rust kernel). |
 
 **The standard deliberately does NOT cover** the plan-gated assurance product —
-the compliance `controls.toml` + packs, the commitment store, the reconciliation
-engine, and the proof/exhibit builder. Those live in the closed cloud repo. The
-line is sharp on purpose: **a third party can implement and verify everything in
-this repo without paying HESO a cent.**
+the compliance `controls.toml` + packs, the commitment store, and the
+proof/exhibit builder. Those live in the closed cloud repo. The line is sharp on
+purpose: **a third party can implement and verify everything in this repo without
+paying HESO a cent.**
 
 ---
 

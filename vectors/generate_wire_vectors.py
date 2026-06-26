@@ -484,9 +484,9 @@ def main() -> int:
     assert_no_raw_content(wire_chained, "CW-CHAINED")
     assert wire_chained["chain_prev"] == wire_genesis["chain_head"], "chain link must thread"
 
-    # Case 3: a BLOCKED move-value commitment (the destructive-primitive index +
-    # the decision=block path the reconciliation engine queries on). The receipt is
-    # still signed (the gate witnesses the attempt) but decision=block.
+    # Case 3: a BLOCKED move-value commitment (the destructive-primitive index,
+    # decision=block path). The receipt is still signed (the gate witnesses the
+    # attempt) but decision=block.
     block_content = fixed_content()
     block_content["action"] = {
         "verb": "payment",
@@ -651,7 +651,9 @@ def main() -> int:
             "and ADR-0001; the Postgres `primitive_enum` in commitment-store.md §3.1 "
             "uses the underscore form (move_value, change_authority) — same five values, "
             "the SQL identifier just can't contain a hyphen. The wire carries the "
-            "hyphenated spine token; the DB enum is its 1:1 underscore mapping."
+            "hyphenated spine token; the DB enum is its 1:1 underscore mapping. "
+            "reconciliation_state_default is a reserved post-pivot legacy field retained "
+            "for wire-format stability; no active service queries it."
         ),
         "cases": index_cases,
     }
