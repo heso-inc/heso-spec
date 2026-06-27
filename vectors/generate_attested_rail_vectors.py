@@ -54,6 +54,9 @@ APP_SPKI = APP_KEY.public_key().public_bytes(
 )
 APP_SPKI_B64 = B64(APP_SPKI).decode()
 LOG_KEY = Ed25519PrivateKey.from_private_bytes(b"\x11" * 32)
+LOG_PUB = LOG_KEY.public_key().public_bytes(
+    serialization.Encoding.Raw, serialization.PublicFormat.Raw
+)
 ED_WITNESS = Ed25519PrivateKey.from_private_bytes(b"\x22" * 32)
 ED_WITNESS_PUB = ED_WITNESS.public_key().public_bytes(
     serialization.Encoding.Raw, serialization.PublicFormat.Raw
@@ -106,9 +109,7 @@ def _path(nodes: list[bytes], m: int) -> list[bytes]:
 def make_checkpoint(root: bytes, tree_size: int, origin: str = "l4.heso.ca/v1") -> str:
     body = f"{origin}\n{tree_size}\n{B64(root).decode()}\n"
     sig = LOG_KEY.sign(body.encode())
-    key_hash = hv.hashlib.sha256(origin.encode() + b"\n" + bytes([0x01]) + ED_WITNESS_PUB).digest()[
-        :4
-    ]
+    key_hash = hv.hashlib.sha256(origin.encode() + b"\n" + bytes([0x01]) + LOG_PUB).digest()[:4]
     note = body + "\n" + f"— {origin} {B64(key_hash + sig).decode()}\n"
     return B64(note.encode()).decode()
 
