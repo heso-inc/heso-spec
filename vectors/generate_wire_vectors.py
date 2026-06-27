@@ -631,7 +631,6 @@ def main() -> int:
         "source": "commitment-store.md §3.1 (primitive_enum) + taxonomy_classify goldens",
         "primitive_enum": ["move-value", "destroy", "change-authority", "disclose", "execute"],
         "decision_enum": ["allow", "block", "suspended"],
-        "reconciliation_state_default": "pending",
         "index_columns": [
             "organisation_id",
             "primitive",
@@ -651,9 +650,7 @@ def main() -> int:
             "and ADR-0001; the Postgres `primitive_enum` in commitment-store.md §3.1 "
             "uses the underscore form (move_value, change_authority) — same five values, "
             "the SQL identifier just can't contain a hyphen. The wire carries the "
-            "hyphenated spine token; the DB enum is its 1:1 underscore mapping. "
-            "reconciliation_state_default is a reserved post-pivot legacy field retained "
-            "for wire-format stability; no active service queries it."
+            "hyphenated spine token; the DB enum is its 1:1 underscore mapping."
         ),
         "cases": index_cases,
     }
