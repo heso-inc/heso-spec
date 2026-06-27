@@ -52,11 +52,18 @@ cert carries the `id-kp-timeStamping` EKU and chains to a **pinned in-binary TSA
 root**.
 
 With the `tsa` feature **OFF**, a present anchor that passes the preconditions STILL
-fails closed (`TimeAnchorUnverifiable`) — the default build never vouches for time
-it cannot verify. An **absent** anchor is not a failure; it is
+fails closed (`TimeAnchorUnverifiable`) — such a build never vouches for time it
+cannot verify. An **absent** anchor is not a failure; it is
 `TimeStatus::NoTrustedTime`.
 
-The producer side (token *requesting*) is feature-gated
+> **Published-artifact reality (2026-06-27).** The **heso-wasm** proof-page build
+> is compiled **with** `tsa` enabled: trusted-time verify is live on that surface
+> and a valid anchor resolves to `AnchoredRfc3161`, not `TimeAnchorUnverifiable`.
+> The **published Python wheel** also ships the `tsa` feature enabled and exposes
+> `request_time_anchor` for production minting — the feature gate is a Rust source
+> boundary, not a published-package boundary.
+
+The producer side (token *requesting*) is feature-gated in the Rust source
 (`#[cfg(feature = "tsa")] request_time_anchor`); the **verify side is always real**.
 
 ---
@@ -106,7 +113,8 @@ A time-aware verify (`open_receipt_with_time`) returns the receipt outcome plus 
   `"required"`).
 - `TimeStatus::AnchoredRfc3161 { gen_time }` — anchor present and verified.
 - `ActionOutcome::TimeAnchorUnverifiable(String)` — anchor present but unverifiable
-  (preconditions failed, or `tsa` feature off).
+  (preconditions failed, or `tsa` feature off in a custom library build; the
+  published heso-wasm and Python wheel builds have `tsa` enabled).
 - `ActionOutcome::AnchorRequired` — `anchor_policy = "required"` but no verified
   anchor.
 
@@ -121,5 +129,6 @@ heso_action::verify::open_receipt_with_time(&ActionReceipt) -> (ActionOutcome, T
 heso_action::tsa::verify_time_anchor(&TimeAnchor, anchored_hash: &str) -> Result<String, String>
 heso_action::receipt::anchored_content_hash(&ActionContent) -> String   // the pre-anchor hash
 #[cfg(feature = "tsa")] heso_action::tsa::request_time_anchor(action_hash, tsa_url) -> Result<TimeAnchor, String>
+// ↑ feature-gated in Rust source; unconditionally available in the published Python wheel and heso-wasm.
 // constant: heso_action::domain::TIME_ANCHOR_RFC3161
 ```

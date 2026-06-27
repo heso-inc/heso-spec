@@ -110,6 +110,17 @@ Transparency lives **outside** the signed content of an Action Receipt.
 
 > **Honesty boundary (normative).** Transparency proves **inclusion and append-only order**, not **truth**. An inclusion proof shows a receipt is in *a* tree at *a* position; it does not show the content is accurate, nor — on its own — that the operator showed the *same* tree to everyone (the split-view / equivocation problem). Split-view defense requires an independent witness whose key is outside the operator's control; see the superseded [§6](#6-the-witnessed-network-forward-slot-superseded). Transparency never proves the trail is *complete*: it proves order and inclusion for the receipts that exist, nothing about actions that never produced a receipt. An implementation MUST NOT describe a bare inclusion proof as "witnessed accountability" or "public transparency," nor as evidence of completeness.
 
+> **Declared-witness enforcement (normative).** When a receipt or verifier
+> configuration declares a witness or cosignature requirement and that requirement
+> is **present but unmet** — a required cosigner whose signature is absent or
+> invalid — a verifier MUST fail closed and MUST NOT surface the result as verified.
+> The *undeclared-absent* case is valid silence: no witness requirement is declared
+> and no cosignature is present; the verifier reports the absence honestly (e.g.
+> `NotWitnessed`) and MUST NOT treat it as a failure. A bare inclusion proof with
+> no cosignature MUST NOT be described as "witnessed." The live external witness
+> service is not yet operational; this rule governs the verifier's enforcement of
+> any declared requirement regardless of whether the underlying network is live.
+
 ---
 
 ## 5. Interop reference vectors
