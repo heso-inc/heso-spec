@@ -443,6 +443,15 @@ map the outcome to an exit code:
    and the verifier re-derives, apply the §3.4 re-derivation. Transparency
    ([`transparency.md`](./transparency.md)) is not enforced inline.
 
+   > **Pipeline stamp (informative).** When `anchor_policy` enforcement is enabled
+   > in the HESO pipeline configuration, the pipeline stamps
+   > `anchor_policy = "required"` into `content` before signing — so the signed
+   > receipt itself carries the requirement. A receipt that arrives with
+   > `anchor_policy = "required"` reflects a config-gated operator decision; the
+   > verifier enforces it fail-closed per [`time-anchor.md §4`](./time-anchor.md).
+   > Receipts produced without the config flag carry no `anchor_policy` and remain
+   > anchorless-by-default.
+
 All pass → **valid** (exit 0), carrying the re-derived L0/L1.
 
 > **Ordering is load-bearing.** A forged operator signature is *invalid signature*

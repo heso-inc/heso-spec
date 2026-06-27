@@ -82,6 +82,19 @@ had none.
 
 ## transparency
 
+### 1.1.0 — 2026-06-27 — witness-quorum honesty rule (normative)
+
+- **(D) Witness honesty: declared-but-unmet ⇒ fail closed; undeclared-absent ⇒
+  valid silence.** New normative rule in §4: when a receipt or verifier configuration
+  declares a witness or cosignature requirement and that requirement is present but
+  unmet, a verifier MUST fail closed and MUST NOT surface the result as verified.
+  The undeclared-absent case remains valid silence — no declared requirement, no
+  cosignature present — and MUST be reported honestly as `NotWitnessed` (not a
+  failure). A bare inclusion proof with no cosignature MUST NOT be described as
+  "witnessed." The live external witness service is not yet operational; this rule
+  governs verifier enforcement of any declared requirement regardless of network
+  liveness.
+
 ### 1.0.0 — 2026-06-18 — absorbed
 
 - Absorbed from `TRANSPARENCY-1.0.md`: RFC-6962 Merkle inclusion + consistency
@@ -92,6 +105,24 @@ had none.
 ---
 
 ## time-anchor
+
+### 1.1.0 — 2026-06-27 — published artifacts ship tsa; anchor_policy pipeline-stamped
+
+- **(B) heso-wasm ships tsa verify.** The proof-page WASM build is now compiled
+  with the `tsa` feature enabled. A valid RFC-3161 anchor on this surface resolves
+  to `AnchoredRfc3161 { gen_time }`, not `TimeAnchorUnverifiable`. The verify side
+  was always normative; this entry records that the blanket "tsa off ⇒
+  `TimeAnchorUnverifiable`" framing no longer applies to the published WASM artifact.
+- **(A) Published Python wheel ships tsa-net mint.** The published `heso` Python
+  wheel is built with the `tsa` feature enabled and exposes `request_time_anchor`
+  for production use. The `#[cfg(feature = "tsa")]` gate is a Rust source boundary,
+  not a published-package boundary.
+- **(C) Pipeline stamps `anchor_policy = "required"` when config-gated.** When
+  `anchor_policy` enforcement is enabled in the HESO pipeline configuration, the
+  pipeline stamps `anchor_policy = "required"` into `content` before signing; the
+  verifier enforces it fail-closed per §4. Receipts produced without the config flag
+  carry no `anchor_policy` and remain anchorless-by-default. See
+  [`action-receipt.md §8 pipeline-stamp note`](./action-receipt.md).
 
 ### 1.0.0 — 2026-06-18 — split out of the v2 omnibus
 
