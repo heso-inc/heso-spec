@@ -20,12 +20,16 @@ therefore implements the Grade 0 level.
 from __future__ import annotations
 
 import base64
+import datetime
 import hashlib
 import tomllib
+import uuid
 
 import rfc8785
 from blake3 import blake3
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 # §3.2: the 12 ASCII bytes of "heso-plat/v1" followed by one NUL byte (0x00),
@@ -925,6 +929,769 @@ def taxonomy_hash(toml_path: str) -> str:
     ]
     projection = {"version": 1, "classes": proj_classes}
     return blake3(rfc8785.dumps(projection)).hexdigest()
+
+
+# ===========================================================================
+# HESO-attested-rail/1 (modules/attested-rail.md)
+#
+# The signed enclave-egress core (`content.enclave_egress`) + the unsigned
+# sidecar (`ActionReceipt.enclave_window_proofs`), plus the §6 tri-state
+# verifier. Two canonical disciplines, never mixed: JCS (RFC 8785) for the JSON
+# tree (delegated to :func:`canonical_bytes`) and deterministic CBOR (RFC 8949
+# §4.2.1) for the signature/registry *preimages* (this section).
+#
+# The four CBOR preimage encoders + two wire helpers reproduce the Rust kernel's
+# round-trip goldens (RT-1..10) BYTE-FOR-BYTE — that byte-identity, asserted in
+# `vectors/round-trip-goldens.json`, is the neutrality proof: a Python stranger
+# computes the same operator-signed bytes the Rust enclave did.
+# ===========================================================================
+
+# Phase-0 immortal contract pins (FROZEN-WIRE-SCHEMA §0.7, §1, §3.4).
+ENCLAVE_PROFILE_V1 = "heso-attested-rail/1"
+ENCLAVE_EVIDENCE_TYPE_V1 = "aws-nitro-v1"
+ENCLAVE_VERIFIER_VERSION = 0
+ENCLAVE_TOKEN_FORMAT = "biscuit-v3"
+ENCLAVE_HPKE_INFO_PREFIX = b"HESO-enclave-v1\x00"
+# L4 leaf-type discriminators (§4); distinct from RFC-6962 separators 0x00/0x01.
+L4_LEAF_ACTION = 0x10
+L4_LEAF_WINDOW = 0x11
+L4_LEAF_REGISTRY = 0x12
+# Phase-0 launch registry is EMPTY (§5): no 1–99, no 100–9999 allocated, so any
+# key in a signed `crit` list is must-understand-but-unknown ⇒ WITHHELD (PG-4).
+KNOWN_EXT_KEYS: frozenset[int] = frozenset()
+
+
+class EnclaveCborError(ValueError):
+    """A deterministic-CBOR preimage could not be produced (e.g. a float, which
+    is FORBIDDEN in every preimage — schema §0.1/§3.7 — so there is no
+    cross-language float-canonicalization surface)."""
+
+
+def _cbor_head(major: int, arg: int) -> bytes:
+    """One CBOR head: the 3-bit major type + the shortest definite-length
+    argument encoding (RFC 8949 §4.2.1 shortest-int)."""
+    prefix = major << 5
+    if arg < 24:
+        return bytes([prefix | arg])
+    if arg < 0x100:
+        return bytes([prefix | 24, arg])
+    if arg < 0x10000:
+        return bytes([prefix | 25]) + arg.to_bytes(2, "big")
+    if arg < 0x100000000:
+        return bytes([prefix | 26]) + arg.to_bytes(4, "big")
+    if arg < 0x10000000000000000:
+        return bytes([prefix | 27]) + arg.to_bytes(8, "big")
+    raise EnclaveCborError(f"integer {arg} is outside the representable CBOR range")
+
+
+def det_cbor(value: object) -> bytes:
+    """RFC 8949 §4.2.1 Core Deterministic Encoding of ``value``.
+
+    Definite-length, shortest-int, map keys sorted by their full *encoded* bytes,
+    text=mt3 / bytes=mt2 / uint=mt0 / nint=mt1, no duplicate keys, **floats
+    FORBIDDEN**. ``bool`` is checked before ``int`` (``bool`` is an ``int``
+    subclass in Python). Reproduces ``ciborium`` emitting maps in the given order
+    *because* every frozen preimage pins a key order that already equals §4.2.1
+    (all keys < 24 bytes ⇒ §4.2.1 order coincides with sort-by-length-then-content
+    — see schema §0.1); sorting here makes that explicit rather than incidental.
+    """
+    if isinstance(value, bool):
+        return b"\xf5" if value else b"\xf4"
+    if value is None:
+        return b"\xf6"
+    if isinstance(value, float):
+        raise EnclaveCborError("floats are forbidden in a deterministic-CBOR preimage")
+    if isinstance(value, int):
+        if value >= 0:
+            return _cbor_head(0, value)
+        return _cbor_head(1, -1 - value)
+    if isinstance(value, str):
+        body = value.encode("utf-8")
+        return _cbor_head(3, len(body)) + body
+    if isinstance(value, (bytes, bytearray)):
+        return _cbor_head(2, len(value)) + bytes(value)
+    if isinstance(value, list):
+        out = bytearray(_cbor_head(4, len(value)))
+        for item in value:
+            out += det_cbor(item)
+        return bytes(out)
+    if isinstance(value, dict):
+        entries: list[tuple[bytes, bytes]] = []
+        seen: set[bytes] = set()
+        for key, val in value.items():
+            enc_key = det_cbor(key)
+            if enc_key in seen:
+                raise EnclaveCborError("duplicate map key in deterministic-CBOR preimage")
+            seen.add(enc_key)
+            entries.append((enc_key, det_cbor(val)))
+        entries.sort(key=lambda kv: kv[0])
+        out = bytearray(_cbor_head(5, len(entries)))
+        for enc_key, enc_val in entries:
+            out += enc_key + enc_val
+        return bytes(out)
+    raise EnclaveCborError(f"unencodable value of type {type(value).__name__}")
+
+
+def det_cbor_decode(data: bytes) -> object:
+    """Decode one deterministic-CBOR item and require it consume ALL of ``data``.
+
+    Supports exactly the preimage value space (uint / nint / tstr / bstr / bool /
+    null / array / map); rejects indefinite-length, floats, tags, and trailing
+    bytes. Used only to read the D1-anchored ``event_bytes`` body back for the §6
+    Check-5 congruence compares (the encoder is the authority; this is its
+    inverse over the frozen subset)."""
+    value, offset = _cbor_decode_at(data, 0)
+    if offset != len(data):
+        raise EnclaveCborError("trailing bytes after deterministic-CBOR item")
+    return value
+
+
+def _cbor_decode_at(data: bytes, offset: int) -> tuple[object, int]:
+    if offset >= len(data):
+        raise EnclaveCborError("unexpected end of CBOR input")
+    initial = data[offset]
+    major = initial >> 5
+    info = initial & 0x1F
+    offset += 1
+    if info < 24:
+        arg = info
+    elif info == 24:
+        arg = data[offset]
+        offset += 1
+    elif info == 25:
+        arg = int.from_bytes(data[offset : offset + 2], "big")
+        offset += 2
+    elif info == 26:
+        arg = int.from_bytes(data[offset : offset + 4], "big")
+        offset += 4
+    elif info == 27:
+        arg = int.from_bytes(data[offset : offset + 8], "big")
+        offset += 8
+    else:
+        raise EnclaveCborError("indefinite-length or reserved CBOR not allowed")
+    if major == 0:
+        return arg, offset
+    if major == 1:
+        return -1 - arg, offset
+    if major == 2:
+        return bytes(data[offset : offset + arg]), offset + arg
+    if major == 3:
+        return data[offset : offset + arg].decode("utf-8"), offset + arg
+    if major == 4:
+        items: list[object] = []
+        for _ in range(arg):
+            item, offset = _cbor_decode_at(data, offset)
+            items.append(item)
+        return items, offset
+    if major == 5:
+        out: dict[object, object] = {}
+        for _ in range(arg):
+            key, offset = _cbor_decode_at(data, offset)
+            val, offset = _cbor_decode_at(data, offset)
+            out[key] = val
+        return out, offset
+    if major == 7:
+        if info == 20:
+            return False, offset
+        if info == 21:
+            return True, offset
+        if info == 22:
+            return None, offset
+        raise EnclaveCborError("float / simple value not allowed in a preimage")
+    raise EnclaveCborError(f"unsupported CBOR major type {major}")
+
+
+def promise_sig_preimage(
+    boot_id: str,
+    event_id: str,
+    window_id: int,
+    admitted_at: str,
+    content_digest: str,
+    max_merge_delay_secs: int,
+) -> bytes:
+    """The ``promise_sig`` preimage (schema §1.4): a 6-entry deterministic-CBOR
+    map (RT-2). ``event_id``/``content_digest`` are pulled from the enclosing
+    ``EnclaveEgress``; the rest from the ``EnclaveWindowCommitment``. Sign =
+    ``ECDSA-P384(SHA-384(.))``, DER, base64 ⇒ ``promise_sig_b64``."""
+    return det_cbor(
+        {
+            "boot_id": boot_id,
+            "event_id": event_id,
+            "window_id": window_id,
+            "admitted_at": admitted_at,
+            "content_digest": content_digest,
+            "max_merge_delay_secs": max_merge_delay_secs,
+        }
+    )
+
+
+def event_bytes_cbor(body: dict) -> bytes:
+    """The D1-anchored ``event_bytes`` body (schema §3.6, RT-8). ``blake3(.) ==
+    content_digest``. Carries ``tier``/``version`` uints plus the four BLAKE3-hex
+    fields and ``fetch_content_digest`` (tier-3 only). ``det_cbor`` sorts the keys
+    into §4.2.1 order (header ``A8`` tier 1/2, ``A9`` tier 3)."""
+    fields: dict[str, object] = {
+        "tier": int(body["tier"]),
+        "version": int(body["version"]),
+        "event_id": body["event_id"],
+        "request_hash": body["request_hash"],
+        "response_hash": body["response_hash"],
+        "action_params_hash": body["action_params_hash"],
+        "authorization_token": body["authorization_token"],
+        "server_cert_chain_hash": body["server_cert_chain_hash"],
+    }
+    fcd = body.get("fetch_content_digest")
+    if fcd is not None:
+        fields["fetch_content_digest"] = fcd
+    return det_cbor(fields)
+
+
+def action_params_cbor(params: object) -> bytes:
+    """The ``action_params_hash`` params CBOR (schema §3.7, RT-3): recursive
+    §4.2.1 encoding of a JSON value; **floats FORBIDDEN**.
+    ``action_params_hash = blake3_hex(.)``."""
+    return det_cbor(params)
+
+
+def boot_bindings_cbor(hpke_pubkey: bytes, app_key_spki: bytes) -> bytes:
+    """The ``EnclaveBootBindings`` CBOR (schema §3.3, RT-10): a 2-entry map with
+    ``hpke_pubkey`` (head ``6B``) emitted BEFORE ``app_key_spki`` (head ``6C``) —
+    the §4.2.1 order the pinned Rust struct declaration also produces."""
+    return det_cbor({"hpke_pubkey": hpke_pubkey, "app_key_spki": app_key_spki})
+
+
+def hpke_info(pcr0: bytes) -> bytes:
+    """The HPKE ``info`` string (schema §3.4, RT-7): ``b"HESO-enclave-v1\\x00" ‖
+    pcr0`` = 16 + 48 (full SHA-384 PCR0) = 64 bytes. A 32-byte PCR0 is REJECTED."""
+    if len(pcr0) != 48:
+        raise EnclaveCborError("PCR0 must be 48 bytes (SHA-384); a 32-byte PCR0 is rejected")
+    return ENCLAVE_HPKE_INFO_PREFIX + pcr0
+
+
+def witness_key_id_hex(witness_name: str, algo: int, pubkey: bytes) -> str:
+    """``WitnessCosig.key_id_hex`` (schema §3.2, RT-6): 8 lowercase hex =
+    ``SHA-256(name ‖ 0x0A ‖ algo ‖ pubkey)[:4]``. ``algo ∈ {0x04 ts-Ed25519,
+    0x06 ts-ML-DSA-44}`` is the ONLY place the algorithm is encoded on the wire."""
+    preimage = witness_name.encode("utf-8") + b"\x0a" + bytes([algo]) + pubkey
+    return hashlib.sha256(preimage).digest()[:4].hex()
+
+
+# ── L4 log + window-tree primitives (schema §2.3, §4) ───────────────────────
+def enclave_window_fold(event_bytes: bytes, merkle_path: list) -> bytes:
+    """Window-tree fold (schema §2.3, duplicate-last-on-odd): ``acc =
+    leaf_hash(event_bytes)``; per step ``acc = i_am_right ? node_hash(sibling,
+    acc) : node_hash(acc, sibling)``. SHA-256 leaf/node (RFC-6962 separators).
+    DISTINCT from the L4 split-point fold (:func:`rfc6962_verify_inclusion`)."""
+    acc = rfc6962_leaf_hash(event_bytes)
+    for step in merkle_path:
+        sibling = bytes.fromhex(step["sibling_hex"])
+        if step.get("i_am_right"):
+            acc = rfc6962_node_hash(sibling, acc)
+        else:
+            acc = rfc6962_node_hash(acc, sibling)
+    return acc
+
+
+def l4_type_b_leaf(boot_id: str, window_id: int, seal_time_ms: int, window_root: bytes) -> bytes:
+    """L4 Type-B window-root leaf bytes (schema §4): ``0x11 ‖ boot_id[16] ‖
+    window_id[u64 BE] ‖ seal_time_ms[u64 BE] ‖ window_root[32]`` (fixed 65).
+    ``leaf_hash_B = rfc6962_leaf_hash(.)``."""
+    return (
+        bytes([L4_LEAF_WINDOW])
+        + uuid.UUID(boot_id).bytes
+        + window_id.to_bytes(8, "big")
+        + seal_time_ms.to_bytes(8, "big")
+        + window_root
+    )
+
+
+def l4_type_c_leaf(registry_entry_bytes: bytes) -> bytes:
+    """L4 Type-C registry leaf bytes (schema §4): ``0x12 ‖ registry_entry_bytes``
+    (the sidecar omits the ``0x12``; the verifier re-prepends it).
+    ``leaf_hash_C = rfc6962_leaf_hash(.)``."""
+    return bytes([L4_LEAF_REGISTRY]) + registry_entry_bytes
+
+
+def parse_registry_entry(entry: bytes) -> dict | None:
+    """Decode the L4 Type-C entry (schema §4): ``entry_schema_version[u8=0x01] ‖
+    pcr0[48] ‖ pcr1[48] ‖ pcr2[48] ‖ pcr8[48] ‖ valid_from_secs[u64 BE] ‖
+    valid_until_secs[u64 BE] ‖ repro_ref_len[u16 BE] ‖ repro_ref[UTF-8]`` (fixed
+    211 + ``repro_ref_len``). Returns ``None`` on any length/version violation."""
+    if len(entry) < 211 or entry[0] != 0x01:
+        return None
+    valid_from = int.from_bytes(entry[193:201], "big")
+    valid_until = int.from_bytes(entry[201:209], "big")
+    ref_len = int.from_bytes(entry[209:211], "big")
+    if len(entry) != 211 + ref_len:
+        return None
+    return {
+        "valid_from_secs": valid_from,
+        "valid_until_secs": valid_until,
+        "repro_ref": entry[211 : 211 + ref_len].decode("utf-8", "replace"),
+    }
+
+
+def parse_checkpoint_note(note_text: str) -> dict | None:
+    """Parse a C2SP checkpoint signed-note (schema §4): body ``<origin>\\n
+    <tree_size>\\n<base64std(root[32])>\\n``, a blank line, then ``— <name>
+    <b64>`` sig lines. Returns ``{origin, tree_size, root(bytes), body(str),
+    sig_lines}`` or ``None`` when malformed."""
+    lines = note_text.split("\n")
+    if len(lines) < 4 or lines[3] != "":
+        return None
+    origin, size_str, root_b64 = lines[0], lines[1], lines[2]
+    try:
+        tree_size = int(size_str)
+        root = base64.b64decode(root_b64, validate=True)
+    except (ValueError, TypeError):
+        return None
+    if tree_size < 0 or len(root) != 32:
+        return None
+    body = origin + "\n" + size_str + "\n" + root_b64 + "\n"
+    return {
+        "origin": origin,
+        "tree_size": tree_size,
+        "root": root,
+        "body": body,
+        "sig_lines": [ln for ln in lines[4:] if ln],
+    }
+
+
+def _es384_verify(spki_der: bytes, der_sig: bytes, message: bytes) -> bool:
+    """ECDSA-P384 / ES384 (SHA-384) verify of ``der_sig`` over ``message`` under
+    the DER SPKI ``spki_der``. ``ec.ECDSA(SHA384)`` hashes ``message`` internally,
+    so callers pass the RAW preimage (the CBOR ``promise_sig`` preimage, or the 32
+    raw window-root bytes). Returns ``False`` on any structural or signature
+    failure. This is the I1 key-sourcing discipline: an RSA key loaded here cannot
+    verify a P-384 signature and yields ``False``."""
+    try:
+        public_key = serialization.load_der_public_key(spki_der)
+    except (ValueError, TypeError):
+        return False
+    if not isinstance(public_key, ec.EllipticCurvePublicKey):
+        return False
+    try:
+        public_key.verify(der_sig, message, ec.ECDSA(hashes.SHA384()))
+    except (InvalidSignature, ValueError, TypeError):
+        return False
+    return True
+
+
+def _parse_rfc3339(value: object) -> datetime.datetime | None:
+    """Parse an RFC-3339/ISO-8601 timestamp to an aware ``datetime`` (``Z`` ⇒
+    UTC). Returns ``None`` for anything unparseable."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed
+
+
+def _verdict(state: str, tag: str, annotations: list[str] | None = None) -> dict:
+    """One tri-state outcome: ``state ∈ {VALID, FAIL, WITHHELD}`` (or the
+    non-enclave skip sentinel), the §7 ``verdict_tag``, and any non-verdict
+    annotations."""
+    return {"state": state, "tag": tag, "annotations": annotations or []}
+
+
+def _enclave_attestation(ctx: dict, evidence: object) -> dict | None:
+    """The DECODED NSM attestation facts for an opaque ``evidence`` base64 string.
+
+    THE MODELED BOUNDARY (modules/attested-rail.md §8 honest-limits): the offline
+    reference verifier does NOT re-run the AWS-Nitro COSE_Sign1 / cabundle /
+    PCR-extraction crypto (it needs a live enclave + the AWS root CA), so the
+    conformance corpus carries the facts that parser WOULD yield, keyed by the
+    ``evidence`` string. Every OTHER leg (digest binding, params/token congruence,
+    window Merkle fold, RFC-6962 inclusion, ES384 ``root_sig``/``promise_sig``,
+    time math) runs on the REAL wire bytes."""
+    table = ctx.get("attestations")
+    if not isinstance(table, dict) or not isinstance(evidence, str):
+        return None
+    facts = table.get(evidence)
+    return facts if isinstance(facts, dict) else None
+
+
+def _enclave_promise_invalid(ctx: dict, egress: dict, wc: dict, pinned_pcr0: object) -> bool:
+    """Evaluate the stapled promise in the PROOF-ABSENT branch (schema §6). Any
+    attestation-validity failure OR a bad ``promise_sig`` collapses (caller maps to
+    a single ``EnclaveWindowPromiseInvalid``). Returns ``True`` on any failure."""
+    att = _enclave_attestation(ctx, wc.get("boot_attestation_b64"))
+    if att is None or not att.get("parse_ok"):
+        return True
+    if not att.get("cose_sig_valid"):
+        return True
+    if att.get("root_fpr") != ctx.get("pinned_root_fpr"):
+        return True
+    if att.get("pcr0") != pinned_pcr0:
+        return True
+    spki_b64 = att.get("app_key_spki_b64")
+    if not isinstance(spki_b64, str) or not att.get("hpke_present") or not att.get("kms_present"):
+        return True
+    try:
+        spki = base64.b64decode(spki_b64, validate=True)
+        sig = base64.b64decode(wc["promise_sig_b64"], validate=True)
+    except (KeyError, ValueError, TypeError):
+        return True
+    preimage = promise_sig_preimage(
+        wc["boot_id"],
+        egress["event_id"],
+        int(wc["window_id"]),
+        wc["admitted_at"],
+        egress["content_digest"],
+        int(wc["max_merge_delay_secs"]),
+    )
+    return not _es384_verify(spki, sig, preimage)
+
+
+def _enclave_check_attestation(ctx: dict, att: dict, evidence_type: str) -> dict | None:
+    """Schema §6 Checks 1–4 over the decoded attestation facts + out-of-band pins.
+    Returns a FAIL verdict on the first failing leg, else ``None``."""
+    if not att.get("parse_ok"):
+        return _verdict("FAIL", f"EnclaveAttestationMalformed:{att.get('chain_detail', 'parse')}")
+    if att.get("cose_alg") != "ES384":
+        return _verdict("FAIL", "EnclaveAttestationWrongAlgorithm")
+    if att.get("root_fpr") != ctx.get("pinned_root_fpr"):
+        return _verdict("FAIL", "EnclaveChainNotPinnedRoot")
+    if not att.get("chain_valid"):
+        return _verdict("FAIL", f"EnclaveChainInvalid:{att.get('chain_detail', 'chain')}")
+    bad_att = att.get("cert_expired_at_attestation")
+    if bad_att is not None:
+        return _verdict("FAIL", f"EnclaveCertExpiredAtAttestation:{bad_att}")
+    bad_adm = att.get("cert_expired_at_admitted")
+    if bad_adm is not None:
+        return _verdict("FAIL", f"EnclaveCertExpiredAtAdmittedAt:{bad_adm}")
+    if not att.get("issuer_is_ca"):
+        return _verdict("FAIL", "EnclaveIssuerNotCa:0")
+    if not att.get("cose_sig_valid"):
+        return _verdict("FAIL", "EnclaveAttestationSignatureInvalid")
+    pinned = ctx.get("pinned_pcr0", {})
+    if not isinstance(pinned, dict) or att.get("pcr0") != pinned.get(evidence_type):
+        return _verdict("FAIL", "EnclavePcr0Mismatch")
+    if not isinstance(att.get("app_key_spki_b64"), str):
+        return _verdict("FAIL", "EnclaveAppKeyBindingMissing")
+    if not att.get("hpke_present"):
+        return _verdict("FAIL", "EnclaveHpkeBindingMissing")
+    if not att.get("kms_present"):
+        return _verdict("FAIL", "EnclaveKmsKeyBindingMissing")
+    return None
+
+
+def _enclave_check_window(egress: dict, proof: dict, att: dict) -> dict | None:
+    """Schema §6 Check 5: the REAL window-binding crypto — D1 digest, params/token
+    congruence (over the decoded ``event_bytes``), ES384 ``root_sig``, and the
+    SHA-256 window-tree fold. Returns a FAIL verdict or ``None``."""
+    try:
+        event_bytes = base64.b64decode(proof["event_bytes_b64"], validate=True)
+    except (KeyError, ValueError, TypeError):
+        return _verdict("FAIL", "EnclaveContentDigestMismatch")
+    if blake3(event_bytes).hexdigest() != egress.get("content_digest"):
+        return _verdict("FAIL", "EnclaveContentDigestMismatch")
+    try:
+        body = det_cbor_decode(event_bytes)
+    except EnclaveCborError:
+        return _verdict("FAIL", "EnclaveContentDigestMismatch")
+    if not isinstance(body, dict):
+        return _verdict("FAIL", "EnclaveContentDigestMismatch")
+    token = egress.get("authorization_token", {})
+    if token.get("action_params_hash") != body.get("action_params_hash"):
+        return _verdict("FAIL", "EnclaveActionParamsMismatch")
+    if token.get("token_hash") != body.get("authorization_token"):
+        return _verdict("FAIL", "EnclaveTokenBindingMismatch")
+    spki_b64 = att.get("app_key_spki_b64")
+    try:
+        spki = base64.b64decode(spki_b64, validate=True) if isinstance(spki_b64, str) else b""
+        sig = base64.b64decode(proof["root_sig_b64"], validate=True)
+        window_root = bytes.fromhex(proof["window_root_hex"])
+    except (KeyError, ValueError, TypeError):
+        return _verdict("FAIL", "EnclaveRootSignatureInvalid")
+    if not _es384_verify(spki, sig, window_root):
+        return _verdict("FAIL", "EnclaveRootSignatureInvalid")
+    if enclave_window_fold(event_bytes, proof.get("merkle_path", [])) != window_root:
+        return _verdict("FAIL", "EnclaveInclusionProofInvalid")
+    return None
+
+
+def _enclave_check_witness(ctx: dict, egress: dict, wc: dict, proof: dict) -> dict:
+    """Schema §6 Check 6 (witness quorum). REAL: RFC-6962 window-root inclusion
+    (the index-driven Type-B fold), C2SP note parse, ``key_id_hex`` recompute, and
+    the cosig active-window check. MODELED: the raw note / cosignature signature
+    validity (``ctx['invalid_checkpoints']`` / ``ctx['invalid_cosigs']``) — Ed25519
+    is proven elsewhere, ML-DSA-44 is Phase-1b. Returns a leg verdict whose state
+    is VALID (annotation-only), WITHHELD, or FAIL."""
+    policies = ctx.get("witness_policies", {})
+    policy_version = proof.get("policy_version")
+    if policy_version is None:
+        policy = {"threshold": 1, "require_external_min": 0}
+    elif isinstance(policies, dict) and policy_version in policies:
+        policy = policies[policy_version]
+    else:
+        return _verdict("WITHHELD", "EnclaveWitnessPolicyUnknown")
+
+    checkpoint = proof.get("witness_checkpoint_b64")
+    cosigs = proof.get("witness_cosignatures", [])
+    require_external = int(policy.get("require_external_min", 0))
+    threshold = int(policy.get("threshold", 1))
+
+    if checkpoint is not None:
+        note = _checkpoint_from_b64(checkpoint)
+        invalid_cps = ctx.get("invalid_checkpoints", set())
+        if note is None or checkpoint in invalid_cps:
+            return _verdict("FAIL", "EnclaveWitnessCheckpointInvalid")
+        inclusion = _enclave_window_inclusion(wc, proof, note)
+        if inclusion is not None:
+            return inclusion
+
+    verified_external = 0
+    invalid_cosigs = ctx.get("invalid_cosigs", set())
+    witnesses = policy.get("witnesses", {}) if isinstance(policy, dict) else {}
+    for cosig in cosigs:
+        if not _enclave_cosig_ok(cosig, witnesses, invalid_cosigs):
+            return _verdict("FAIL", "EnclaveWitnessCosigInvalid")
+        verified_external += 1
+
+    if not cosigs and checkpoint is None:
+        if require_external == 0:
+            return _verdict("VALID", "EnclaveWitnessedSkipped", ["EnclaveWitnessedSkipped"])
+        return _verdict("WITHHELD", "EnclaveWitnessQuorumNotMet")
+    if verified_external < threshold or verified_external < require_external:
+        return _verdict("WITHHELD", "EnclaveWitnessQuorumNotMet")
+    return _verdict("VALID", "EnclaveWitnessedGreen", ["EnclaveWitnessedGreen"])
+
+
+def _checkpoint_from_b64(checkpoint_b64: object) -> dict | None:
+    if not isinstance(checkpoint_b64, str):
+        return None
+    try:
+        text = base64.b64decode(checkpoint_b64, validate=True).decode("utf-8")
+    except (ValueError, TypeError, UnicodeDecodeError):
+        return None
+    return parse_checkpoint_note(text)
+
+
+def _enclave_window_inclusion(wc: dict, proof: dict, note: dict) -> dict | None:
+    """Schema §6 Check 5.2b — bind THIS window's sealed root to the witnessed
+    checkpoint via the index-driven RFC-6962 Type-B fold. WITHHELD when the carrier
+    is absent/partial (never false-green), FAIL when present-but-not-included."""
+    inc = proof.get("window_root_inclusion_proof")
+    leaf_index = proof.get("window_root_leaf_index")
+    seal_time = proof.get("window_seal_time_ms")
+    if inc is None or leaf_index is None or seal_time is None:
+        return _verdict("WITHHELD", "EnclaveWindowRootInclusionMissing")
+    try:
+        window_root = bytes.fromhex(proof["window_root_hex"])
+        siblings = [base64.b64decode(s, validate=True) for s in inc]
+    except (KeyError, ValueError, TypeError):
+        return _verdict("FAIL", "EnclaveWindowRootInclusionInvalid")
+    leaf = l4_type_b_leaf(wc["boot_id"], int(wc["window_id"]), int(seal_time), window_root)
+    if not rfc6962_verify_inclusion(
+        leaf, int(leaf_index), int(note["tree_size"]), siblings, note["root"]
+    ):
+        return _verdict("FAIL", "EnclaveWindowRootInclusionInvalid")
+    return None
+
+
+def _enclave_cosig_ok(cosig: dict, witnesses: object, invalid_cosigs: object) -> bool:
+    """One witness cosignature: REAL ``key_id_hex`` recompute + active-window
+    check; MODELED raw-signature validity. ``algo ∈ {0x04, 0x06}`` is recovered by
+    recomputing ``key_id_hex`` per the policy entry."""
+    if not isinstance(witnesses, dict):
+        return False
+    entry = witnesses.get(cosig.get("witness_name"))
+    if not isinstance(entry, dict):
+        return False
+    try:
+        pubkey = base64.b64decode(entry["pubkey_b64"], validate=True)
+    except (KeyError, ValueError, TypeError):
+        return False
+    algo = int(entry.get("algo", 0))
+    if witness_key_id_hex(cosig.get("witness_name", ""), algo, pubkey) != cosig.get("key_id_hex"):
+        return False
+    ts = cosig.get("timestamp_unix")
+    if not isinstance(ts, int):
+        return False
+    active_from = int(entry.get("active_from", 0))
+    retired_at = entry.get("retired_at")
+    if ts < active_from or (retired_at is not None and ts >= int(retired_at)):
+        return False
+    if isinstance(invalid_cosigs, (set, list)) and cosig.get("cosig_line") in invalid_cosigs:
+        return False
+    return True
+
+
+def _enclave_check_registry(ctx: dict, egress: dict, wc: dict, proof: dict) -> dict:
+    """Schema §6 Check 7 (verify-as-of-mint / release registry, ADVISORY-GATING).
+    REAL: the index-driven RFC-6962 Type-C fold + anti-backdating time bounds.
+    MODELED: the checkpoint log-key signature validity. Absent NEVER gates;
+    present-but-invalid FAILS — frozen NOW so no later check can split
+    VALID(old)→FAIL(new)."""
+    entry_b64 = proof.get("registry_entry_bytes")
+    if entry_b64 is None:
+        return _verdict("VALID", "EnclaveRegistryUnresolved", ["EnclaveRegistryUnresolved"])
+    inclusion = proof.get("inclusion_proof")
+    leaf_index = proof.get("registry_leaf_index")
+    checkpoint = proof.get("checkpoint")
+    if inclusion is None or leaf_index is None or checkpoint is None:
+        return _verdict("FAIL", "EnclaveRegistryProofInvalid")
+    note = _checkpoint_from_b64(checkpoint)
+    if note is None or checkpoint in ctx.get("invalid_checkpoints", set()):
+        return _verdict("FAIL", "EnclaveRegistryProofInvalid")
+    try:
+        entry_bytes = base64.b64decode(entry_b64, validate=True)
+        siblings = [base64.b64decode(s, validate=True) for s in inclusion]
+    except (ValueError, TypeError):
+        return _verdict("FAIL", "EnclaveRegistryProofInvalid")
+    leaf = l4_type_c_leaf(entry_bytes)
+    if not rfc6962_verify_inclusion(
+        leaf, int(leaf_index), int(note["tree_size"]), siblings, note["root"]
+    ):
+        return _verdict("FAIL", "EnclaveRegistryProofInvalid")
+    parsed = parse_registry_entry(entry_bytes)
+    mint = _parse_rfc3339(wc.get("admitted_at"))
+    if parsed is None or mint is None:
+        return _verdict("FAIL", "EnclaveRegistryProofInvalid")
+    mint_secs = int(mint.timestamp())
+    valid_until = parsed["valid_until_secs"]
+    if mint_secs < parsed["valid_from_secs"] or (valid_until != 0 and mint_secs > valid_until):
+        return _verdict("FAIL", "EnclaveRegistryStale")
+    return _verdict("VALID", "EnclaveRegistryResolved", ["EnclaveRegistryResolved"])
+
+
+def verify_attested_rail(receipt: dict, ctx: dict) -> dict:
+    """Verify the HESO-attested-rail/1 enclave-egress legs of an ``ActionReceipt``
+    (modules/attested-rail.md §6). Returns ``{state, tag, annotations}`` where
+    ``state ∈ {VALID, FAIL, WITHHELD}`` and ``tag`` is the §7 ``verdict_tag``.
+
+    Runs ONLY when ``content.enclave_egress`` is present (PG-1: an absent core is
+    a witness-mode / fallback receipt that ``verify_action_receipt`` governs —
+    returns the ``NotEnclaveGrade`` sentinel). The order is the §6 short-circuit:
+    PG-1..PG-7 → TL-0..TL-2 → PG-equiv → deferred-proof gate → per-proof [Check 0
+    → Checks 1–4 → Check 5] → Check 6 → Check 7 → combined VALID.
+
+    ``ctx`` carries the out-of-band trust state a stranger supplies alongside the
+    receipt (none of it lives in the receipt): ``trusted_now`` (RFC-3339 clock),
+    ``verifier_version``, ``supported_profiles``, ``supported_evidence_types``,
+    ``pinned_pcr0`` (``{evidence_type: hex}``), ``pinned_root_fpr``,
+    ``witness_policies``, ``revocation_list``, and the modeled ``attestations`` /
+    ``invalid_checkpoints`` / ``invalid_cosigs`` facts (see
+    :func:`_enclave_attestation`)."""
+    content = receipt.get("content")
+    if not isinstance(content, dict):
+        return _verdict("FAIL", "EnclaveAttestationMalformed:no-content")
+    egress = content.get("enclave_egress")
+    if not isinstance(egress, dict):
+        return _verdict("SKIP", "NotEnclaveGrade")
+
+    annotations: list[str] = []
+    required = bool(egress.get("required"))
+
+    # ── PG (pre-gate) ───────────────────────────────────────────────────────
+    supported_profiles = ctx.get("supported_profiles", {ENCLAVE_PROFILE_V1})
+    if egress.get("profile") not in supported_profiles:
+        return _verdict("WITHHELD", "EnclaveUnsupportedContract")
+    verifier_version = int(ctx.get("verifier_version", ENCLAVE_VERIFIER_VERSION))
+    if int(egress.get("min_verifier", 0)) > verifier_version:
+        return _verdict("WITHHELD", "EnclaveVersionTooNew")
+    ext = egress.get("ext")
+    if isinstance(ext, dict):
+        for key in ext.get("crit", []):
+            if int(key) not in KNOWN_EXT_KEYS:
+                return _verdict("WITHHELD", f"EnclaveUnknownCriticalExtension:{key}")
+    supported_evidence = ctx.get("supported_evidence_types", {ENCLAVE_EVIDENCE_TYPE_V1})
+    evidence_type = egress.get("evidence_type")
+    if evidence_type not in supported_evidence:
+        state = "FAIL" if required else "WITHHELD"
+        return _verdict(state, "EnclaveAttestationUnsupportedProfile")
+    wc = egress.get("window_commitment")
+    if not isinstance(wc, dict):
+        state = "FAIL" if required else "WITHHELD"
+        return _verdict(state, "EnclaveProofAbsent")
+
+    proofs = receipt.get("enclave_window_proofs") or []
+    for proof in proofs:
+        if wc.get("boot_attestation_b64") != proof.get("evidence"):
+            return _verdict("FAIL", "EnclaveBootAttestationMismatch")
+
+    # ── TL (authorization-token signed-core leg) ────────────────────────────
+    token = egress.get("authorization_token", {})
+    admitted = _parse_rfc3339(wc.get("admitted_at"))
+    if admitted is None:
+        return _verdict("FAIL", "EnclaveProofAbsent")
+    if token.get("format") != ENCLAVE_TOKEN_FORMAT:
+        return _verdict("FAIL", "EnclaveTokenMalformed")
+    expires = _parse_rfc3339(token.get("expires_at"))
+    if expires is None:
+        return _verdict("FAIL", "EnclaveTokenMalformed")
+    if expires < admitted:
+        return _verdict("FAIL", "EnclaveTokenExpired")
+
+    # ── PG-equiv: one boot must commit to one window root ───────────────────
+    by_evidence: dict[str, str] = {}
+    for proof in proofs:
+        ev = proof.get("evidence")
+        root = proof.get("window_root_hex")
+        if isinstance(ev, str):
+            if ev in by_evidence and by_evidence[ev] != root:
+                return _verdict("FAIL", "EnclaveEquivocationDetected")
+            by_evidence[ev] = root
+
+    pinned_pcr0_map = ctx.get("pinned_pcr0", {})
+    pinned_pcr0 = pinned_pcr0_map.get(evidence_type) if isinstance(pinned_pcr0_map, dict) else None
+
+    # ── Deferred-proof gate (branch on PROOF-PRESENCE) ──────────────────────
+    if not proofs:
+        att = _enclave_attestation(ctx, wc.get("boot_attestation_b64"))
+        if att is not None and att.get("parse_ok"):
+            stamp = _parse_rfc3339(att.get("timestamp"))
+            if stamp is not None and stamp > admitted:
+                return _verdict("FAIL", "EnclaveTimestampAnomaly")
+        if _enclave_promise_invalid(ctx, egress, wc, pinned_pcr0):
+            return _verdict("FAIL", "EnclaveWindowPromiseInvalid")
+        now = _parse_rfc3339(ctx.get("trusted_now"))
+        deadline = admitted + datetime.timedelta(seconds=int(wc.get("max_merge_delay_secs", 0)))
+        if now is None or now <= deadline:
+            return _verdict("WITHHELD", "EnclaveWindowPending")
+        return _verdict("FAIL", "EnclaveWindowPromiseBreached")
+
+    # ── PROOF-PRESENT branch ────────────────────────────────────────────────
+    for proof in proofs:
+        att = _enclave_attestation(ctx, proof.get("evidence"))
+        if att is not None and att.get("parse_ok"):
+            stamp = _parse_rfc3339(att.get("timestamp"))
+            if stamp is not None and stamp > admitted:
+                return _verdict("FAIL", "EnclaveTimestampAnomaly")
+        # Check 0 — congruence, before the attestation_profile dispatch.
+        if evidence_type != proof.get("attestation_profile"):
+            return _verdict("FAIL", "EnclaveAttestationProfileMismatch")
+        if proof.get("profile") != egress.get("profile"):
+            return _verdict("FAIL", "EnclaveContractProfileMismatch")
+        if att is None:
+            return _verdict("FAIL", "EnclaveAttestationMalformed:no-attestation")
+        fail = _enclave_check_attestation(ctx, att, str(evidence_type))
+        if fail is not None:
+            return fail
+        fail = _enclave_check_window(egress, proof, att)
+        if fail is not None:
+            return fail
+
+    witness = _enclave_check_witness(ctx, egress, wc, proofs[0])
+    if witness["state"] != "VALID":
+        return witness
+    annotations += witness["annotations"]
+
+    registry = _enclave_check_registry(ctx, egress, wc, proofs[0])
+    if registry["state"] == "FAIL":
+        return registry
+    annotations += registry["annotations"]
+
+    revocation = ctx.get("revocation_list", set())
+    if token.get("revocation_id") in revocation:
+        annotations.append("EnclaveRevocationAdvisory")
+
+    return _verdict("VALID", "EnclaveValid", annotations)
 
 
 # ---------------------------------------------------------------------------
