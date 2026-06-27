@@ -34,6 +34,7 @@ claiming the rest.
 | **time-anchor** | [`modules/time-anchor.md`](./modules/time-anchor.md) | RFC-3161 TSA token binding over a receipt/checkpoint. |
 | **quorum** | [`modules/quorum.md`](./modules/quorum.md) | k-of-n approval re-derivation semantics. |
 | **envelope** | [`modules/envelope.md`](./modules/envelope.md) | in-toto Statement + DSSE binding; the HESO/1 `predicateType` whose schema *is* the taxonomy. |
+| **attested-rail** | [`modules/attested-rail.md`](./modules/attested-rail.md) | `heso-attested-rail/1` — the attested-enclave rail: a signed `enclave_egress` core + unsigned window-proof sidecar, deterministic-CBOR preimages, and the tri-state (VALID/FAIL/WITHHELD) verifier with verify-as-of-mint. |
 
 The gold-master data backing the modules — [`taxonomy.toml`](./taxonomy.toml)
 (the taxonomy spine) and [`catalog.toml`](./catalog.toml) (the open auditor

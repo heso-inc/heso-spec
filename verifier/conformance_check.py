@@ -15,6 +15,7 @@ then they are "<GENERATED_AT_MERGE>" and are reported as PENDING (exit 1).
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sys
@@ -25,6 +26,161 @@ from heso_verify import canonical_bytes
 _VEC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vectors")
 VECTORS_PATH = os.path.join(_VEC_DIR, "heso-1.0-vectors.json")
 CROWN_PATH = os.path.join(_VEC_DIR, "heso-1.0-crown-vectors.json")
+ROUND_TRIP_PATH = os.path.join(_VEC_DIR, "round-trip-goldens.json")
+ATTESTED_RAIL_PATH = os.path.join(_VEC_DIR, "heso-1.0-attested-rail-vectors.json")
+
+_B64 = base64.standard_b64encode
+
+
+def recompute_round_trip() -> dict[str, str]:
+    """Recompute the schema-§9 round-trip values (RT-1..10) from THIS clean-room
+    implementation. Each must equal the Rust kernel's golden byte-for-byte — that
+    equality is the attested-rail neutrality proof (modules/attested-rail.md §7)."""
+    token = {
+        "format": "biscuit-v3",
+        "issuer_key_hash": "1" * 64,
+        "issuer_managed": False,
+        "token_hash": "9" * 64,
+        "action_params_hash": "7" * 64,
+        "expires_at": "2099-01-01T00:00:00Z",
+        "revocation_id": bytes(range(64)).hex(),
+        "attenuated": False,
+    }
+    event_body = {
+        "tier": 3,
+        "version": 1,
+        "event_id": "01900000-0000-7000-8000-000000000001",
+        "request_hash": "b" * 64,
+        "response_hash": "c" * 64,
+        "action_params_hash": "7" * 64,
+        "authorization_token": "9" * 64,
+        "fetch_content_digest": "e" * 64,
+        "server_cert_chain_hash": "d" * 64,
+    }
+    rt8 = hv.event_bytes_cbor(event_body)
+    rt3 = hv.action_params_cbor({"amount": 100, "currency": "USD", "recipient": "acct_123"})
+    egress = {
+        "event_id": "01900000-0000-7000-8000-000000000001",
+        "content_digest": "a" * 64,
+        "request_hash": "b" * 64,
+        "response_hash": "c" * 64,
+        "server_cert_chain_hash": "d" * 64,
+        "authorization_token": token,
+        "window_commitment": {
+            "boot_id": "01900000-0000-7000-8000-000000000002",
+            "window_id": 1,
+            "admitted_at": "2026-06-27T00:00:00Z",
+            "max_merge_delay_secs": 90,
+            "promise_sig_b64": _B64(bytes(range(104))).decode(),
+            "boot_attestation_b64": _B64(bytes(range(256))).decode(),
+        },
+        "required": True,
+        "profile": "heso-attested-rail/1",
+        "min_verifier": 0,
+        "evidence_type": "aws-nitro-v1",
+    }
+    proofs = [
+        {
+            "attestation_profile": "aws-nitro-v1",
+            "evidence": _B64(bytes(range(256))).decode(),
+            "window_root_hex": "e" * 64,
+            "root_sig_b64": _B64(bytes(range(104))).decode(),
+            "merkle_path": [
+                {"sibling_hex": "f" * 64, "i_am_right": False},
+                {"sibling_hex": "1" * 64, "i_am_right": True},
+            ],
+            "event_bytes_b64": _B64(rt8).decode(),
+            "profile": "heso-attested-rail/1",
+            "min_verifier": 0,
+        }
+    ]
+    return {
+        "RT1_JCS": canonical_bytes(egress).hex(),
+        "RT2_CBOR": hv.promise_sig_preimage(
+            "01900000-0000-7000-8000-000000000002",
+            "01900000-0000-7000-8000-000000000001",
+            1,
+            "2026-06-27T00:00:00Z",
+            "a" * 64,
+            90,
+        ).hex(),
+        "RT3_CBOR": rt3.hex(),
+        "RT3_BLAKE3": hv.blake3(rt3).hexdigest(),
+        "RT4_JCS": canonical_bytes(proofs).hex(),
+        "RT5_B64": _B64(bytes(range(256))).decode(),
+        "RT6A": hv.witness_key_id_hex("test-witness.heso.ca", 0x04, bytes(32)),
+        "RT6B": hv.witness_key_id_hex("pq-witness.heso.ca", 0x06, bytes(1312)),
+        "RT7": hv.hpke_info(bytes(48)).hex(),
+        "RT8_CBOR": rt8.hex(),
+        "RT8_BLAKE3": hv.blake3(rt8).hexdigest(),
+        "RT9_JCS": canonical_bytes(token).hex(),
+        "RT10_CBOR": hv.boot_bindings_cbor(bytes(32), bytes(range(120))).hex(),
+    }
+
+
+def check_round_trip_goldens() -> tuple[int, list[str]]:
+    """Assert every RT-1..10 value equals the committed Rust golden (byte-identity).
+    Returns (passed, failures)."""
+    if not os.path.exists(ROUND_TRIP_PATH):
+        return 0, [f"round-trip goldens missing: {ROUND_TRIP_PATH}"]
+    with open(ROUND_TRIP_PATH, encoding="utf-8") as fh:
+        goldens = json.load(fh).get("goldens", {})
+    actual = recompute_round_trip()
+    passed = 0
+    failures: list[str] = []
+    for key in sorted(goldens):
+        if actual.get(key) != goldens[key]:
+            failures.append(
+                f"round-trip/{key}: NOT byte-identical to the Rust golden\n"
+                f"    golden: {goldens[key]}\n    actual: {actual.get(key)}"
+            )
+        else:
+            passed += 1
+    return passed, failures
+
+
+def _attested_rail_runtime_ctx(ctx: dict) -> dict:
+    """Rebuild the runtime ctx from the JSON-friendly vector form (lists ⇒ sets,
+    witness_policies string keys ⇒ int)."""
+    runtime = dict(ctx)
+    for field in (
+        "supported_profiles",
+        "supported_evidence_types",
+        "revocation_list",
+        "invalid_checkpoints",
+        "invalid_cosigs",
+    ):
+        runtime[field] = set(ctx.get(field, []))
+    runtime["witness_policies"] = {int(k): v for k, v in ctx.get("witness_policies", {}).items()}
+    return runtime
+
+
+def check_attested_rail_vectors() -> tuple[int, list[str]]:
+    """Run every attested-rail conformance vector through ``verify_attested_rail``
+    and assert the tri-state verdict (+ annotations on the VALID cases) match the
+    expected. Returns (passed, failures)."""
+    if not os.path.exists(ATTESTED_RAIL_PATH):
+        return 0, [f"attested-rail vectors missing: {ATTESTED_RAIL_PATH}"]
+    with open(ATTESTED_RAIL_PATH, encoding="utf-8") as fh:
+        corpus = json.load(fh)
+    passed = 0
+    failures: list[str] = []
+    for vec in corpus.get("vectors", []):
+        got = hv.verify_attested_rail(vec["receipt"], _attested_rail_runtime_ctx(vec["ctx"]))
+        exp = vec["expected"]
+        if got["state"] != exp["state"] or got["tag"] != exp["tag"]:
+            failures.append(
+                f"attested-rail/{vec['id']}: expected {exp['state']}/{exp['tag']} "
+                f"but got {got['state']}/{got['tag']}"
+            )
+        elif "annotations" in exp and sorted(got["annotations"]) != sorted(exp["annotations"]):
+            failures.append(
+                f"attested-rail/{vec['id']}: annotations expected "
+                f"{sorted(exp['annotations'])} but got {sorted(got['annotations'])}"
+            )
+        else:
+            passed += 1
+    return passed, failures
 
 
 def _is_placeholder(value) -> bool:
@@ -116,6 +272,15 @@ def main() -> int:
         pending.append("crown vectors file missing — run vectors/generate_vectors.py")
 
     passed += passed_crown
+
+    # ── HESO-attested-rail/1 — byte-identity neutrality proof + tri-state vectors ──
+    rt_passed, rt_failures = check_round_trip_goldens()
+    passed += rt_passed
+    failures.extend(rt_failures)
+
+    ar_passed, ar_failures = check_attested_rail_vectors()
+    passed += ar_passed
+    failures.extend(ar_failures)
 
     for line in pending:
         print(f"PENDING  {line}")
