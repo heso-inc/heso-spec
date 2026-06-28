@@ -488,10 +488,12 @@ signature.
    active-window time bounds — but does NOT Ed25519/ML-DSA-verify the `cosig_line` bytes;
    validity is modeled via `ctx["invalid_cosigs"]`. BOTH the Ed25519 cosig-line
    byte-verification AND ML-DSA-44 support are the Phase-6 follow-up (once the C2SP
-   note-verification library is wired). Vectors B22/B23/B25 exercise this rejection path.
+   note-verification library is wired). Vector B23 exercises this rejection path
+   (`FAIL EnclaveWitnessCosigInvalid`).
 3. **Checkpoint log-key signature validity** (Checks 6 and 7). `_checkpoint_from_b64`
    PARSES the C2SP signed note but does NOT verify the witness/registry log key's
-   signature over it; validity is modeled via `ctx["invalid_checkpoints"]`.
+   signature over it; validity is modeled via `ctx["invalid_checkpoints"]`. Vector B22
+   exercises this rejection path (`FAIL EnclaveWitnessCheckpointInvalid`).
 
 Every OTHER leg in this module — every leg that is a pure function of the wire bytes,
 including the ES384 `root_sig`/`promise_sig` signatures listed above — is byte-real, NOT
