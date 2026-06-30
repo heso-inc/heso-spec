@@ -29,7 +29,8 @@ claiming the rest.
 | **web-observation** | [`modules/web-observation.md`](./modules/web-observation.md) | plat / cassette / sealed-plat — the original Grade-0 web-observation artifact format. **This is the former §1–§4 of this document.** |
 | **action-receipt** | [`modules/action-receipt.md`](./modules/action-receipt.md) (+ `action-receipt-v1.md`) | The signed agent-action receipt: canonicalization, BLAKE3 content hash, Ed25519 signature, verify order, redaction reveal. |
 | **chain** | [`modules/chain.md`](./modules/chain.md) | The BLAKE3 hash-linked per-session audit chain over receipts. |
-| **taxonomy** | [`modules/taxonomy.md`](./modules/taxonomy.md) (+ `taxonomy.toml` gold-master) | The destructive-primitive taxonomy — the classify-by-effect spine (move-value / destroy / change-authority / disclose / execute). |
+| **observed-facts** | [`modules/observed-facts.md`](./modules/observed-facts.md) | The normalized evidence fields that provider adapters emit and the taxonomy consumes. |
+| **taxonomy** | [`modules/taxonomy.md`](./modules/taxonomy.md) (+ `taxonomy.toml`, `registry.toml`, and `taxonomy/extensions/`) | The destructive-primitive taxonomy — the classify-by-effect spine (move-value / destroy / change-authority / disclose / execute). |
 | **transparency** | [`modules/transparency.md`](./modules/transparency.md) | RFC-6962 Merkle inclusion + consistency proofs over receipt commitments. |
 | **time-anchor** | [`modules/time-anchor.md`](./modules/time-anchor.md) | RFC-3161 TSA token binding over a receipt/checkpoint. |
 | **quorum** | [`modules/quorum.md`](./modules/quorum.md) | k-of-n approval re-derivation semantics. |
@@ -37,9 +38,10 @@ claiming the rest.
 | **attested-rail** | [`modules/attested-rail.md`](./modules/attested-rail.md) | `heso-attested-rail/1` — the attested-enclave rail: a signed `enclave_egress` core + unsigned window-proof sidecar, deterministic-CBOR preimages, and the tri-state (VALID/FAIL/WITHHELD) verifier with verify-as-of-mint. |
 
 The gold-master data backing the modules — [`taxonomy.toml`](./taxonomy.toml)
-(the taxonomy spine) and [`catalog.toml`](./catalog.toml) (the open auditor
-label layer) — lives at the repo root and is vendored by implementations via
-pinned-sha.
+(the core taxonomy spine), [`registry.toml`](./registry.toml) plus
+[`taxonomy/extensions/`](./taxonomy/extensions/) (registered provider/extension
+manifests), and [`catalog.toml`](./catalog.toml) (the open auditor label layer)
+— lives in this repo and is vendored by implementations via pinned-sha.
 
 ---
 

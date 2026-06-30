@@ -21,7 +21,7 @@ verifies against:
 
 | Artifact | Home | Versioning unit |
 |---|---|---|
-| Destructive-primitive taxonomy | [`taxonomy.toml`](./taxonomy.toml) + [`modules/taxonomy.md`](./modules/taxonomy.md) | `taxonomy_hash` (content-addressed) + a HESO/1 taxonomy version label |
+| Destructive-primitive taxonomy bundle | [`taxonomy.toml`](./taxonomy.toml) + [`registry.toml`](./registry.toml) + [`taxonomy/extensions/`](./taxonomy/extensions/) + [`modules/taxonomy.md`](./modules/taxonomy.md) | `taxonomy_hash` (content-addressed) + a HESO/1 taxonomy version label |
 | ActionReceipt format | [`modules/action-receipt.md`](./modules/action-receipt.md) (+ [`action-receipt-v1.md`](./modules/action-receipt-v1.md)) | module SemVer + `predicateType` URI version |
 | Session chain | [`modules/chain.md`](./modules/chain.md) | module SemVer |
 | Transparency | [`modules/transparency.md`](./modules/transparency.md) | module SemVer |
@@ -110,7 +110,7 @@ vector.
 > place. Same immutability discipline as an accepted ADR and an applied Supabase
 > migration — an edited-after-publication version silently rewrites history that
 > signed receipts depend on. A fix is always a **new forward version**; the old
-> one stays published. (Aligns [ADR-0012](../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md).)
+> one stays published. This is the same immutable "pin at signing" rule defined in [§4](#4-taxonomy_hash-and-compatibility-gating).
 
 ---
 
@@ -131,23 +131,25 @@ realizes **ADR-0012 — pin at signing, immutable versions**.
 
 ### 4.2 Every change is a new, immutable published version
 
-- Any change to the **normative classification data** (classes, rows,
-  predicates, priority, coarse-verb mapping) produces a **new** `taxonomy_hash`
-  and a **new** published version. The prior version stays published and
-  conformance-vectored forever.
+- Any change to the **normative classification bundle** (classes, rows,
+  predicates, priority, coarse-verb mapping, active registry entries, or active
+  extension manifests) produces a **new** `taxonomy_hash` and a **new** published
+  version. The prior version stays published and conformance-vectored forever.
 - A published taxonomy version MUST NOT be mutated. Old and new versions
   **coexist** (CT v1/v2 precedent).
-- Each published version MUST ship: the canonical `taxonomy.toml` projection, its
+- Each published version MUST ship: the canonical taxonomy-bundle projection, its
   `taxonomy_hash`, a `taxonomy-classify` golden vector set, and a `CHANGELOG.md`
   entry linking the superseded version.
 
 ### 4.3 What moves the hash, and what does not
 
 `taxonomy_hash` is **BLAKE3 over the RFC-8785 (JCS) canonical projection** of the
-**normative classification data only** — classes, rows, predicates, priority, and
-the verb→primitive mapping. It is deliberately **not** computed over:
+**normative classification bundle only** — classes, rows, predicates, priority,
+the verb→primitive mapping, and active registry extensions. It is deliberately
+**not** computed over:
 
 - Comments in `taxonomy.toml`.
+- Non-normative registry or manifest metadata.
 - The auditor labels in `catalog.toml` (descriptive layer).
 - Any non-normative metadata.
 
@@ -248,4 +250,5 @@ open standard; the plan-gated compliance product lives in a separate, closed rep
 - [`CHANGELOG.md`](./CHANGELOG.md) — per-module change history.
 - [`SECURITY.md`](./SECURITY.md) — vulnerability disclosure.
 - [`registry.toml`](./registry.toml) + [`modules/taxonomy-extension-registry.md`](./modules/taxonomy-extension-registry.md) — the namespaced extension registry.
-- [ADR-0001 — taxonomy spine](../redesign/decisions/0001-taxonomy-spine.md) · [ADR-0009 — in-toto/DSSE envelope](../redesign/decisions/0009-in-toto-dsse-envelope.md) · [ADR-0012 — versioning, pin at signing](../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md).
+- [`modules/taxonomy.md`](./modules/taxonomy.md) — the taxonomy spine and hash rule.
+- [`modules/envelope.md`](./modules/envelope.md) — the in-toto/DSSE envelope binding.

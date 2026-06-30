@@ -23,8 +23,8 @@ grow — a vendor needs to teach the classifier that *their* internal ledger
 endpoint is `move-value`, or that *their* PII-egress surface is `disclose`,
 without forking the standard.
 
-Without a registry, "extensible" is a comment in
-[`../taxonomy.toml`](../taxonomy.toml), not a process. Two vendors could both
+Without a registry, "extensible" is a comment in the taxonomy bundle, not a
+process. Two vendors could both
 claim `internal-ledger`; nobody could discover what `acme/pii-egress` means; and
 an extension could ship with no proof it classifies the way it claims. The
 registry fixes all three:
@@ -65,15 +65,16 @@ vocabulary, mapping to the same five primitives.
 ## 3. What an extension may and may not do
 
 An extension is **add-only, namespaced, and monotonic** — exactly the grammar the
-gold-master [`../taxonomy.toml`](../taxonomy.toml) loader enforces fail-closed:
+taxonomy bundle loader enforces fail-closed:
 
 An extension MAY:
 
 - Add a new `[[class]]` whose `id` is `<ns>/<name>`. A new class is inserted by
   priority **just above the `unresolved` residual** — it can only **narrow** the
   residual lane, never pre-empt a built-in dangerous lane.
-- Add members to a built-in class's predicate sets via `[[extend]]` (more hosts /
-  suffixes / path globs / argv tokens) — strictly **growing** what is caught.
+- Add predicate rows to a built-in class through an `extend` manifest — strictly
+  **growing** what is caught. First-party provider packs use this for well-known
+  host facts.
 
 An extension MUST NOT:
 
@@ -83,8 +84,8 @@ An extension MUST NOT:
   (monotonic narrowing — never widen what reaches the world).
 - Add a class that laxes the `unresolved` residual.
 - Redefine, shadow, or remove a built-in (bare-name) id.
-- Move `taxonomy_hash` for the core taxonomy. A registered extension is its own
-  versioned artifact; it does not mutate the core spine's hash.
+- Weaken the taxonomy bundle hash. Active extensions are part of the bundle
+  projection, and each extension also has its own content hash.
 
 The loader rejects any violation at load time (fail-closed), and the registry
 review rejects any registration that violates these rules.
@@ -101,11 +102,11 @@ not a private edit to a vendored copy. The steps, per
    [`../registry.toml`](../registry.toml) with `ns`, `owner`, `contact`,
    `registered`, and an optional `homepage`. If your namespace already exists, skip
    this step.
-2. **Define the extension** in your own `[[class]]` / `[[extend]]` form, mapped to
-   exactly one of the five primitives (§3).
+2. **Define the extension manifest** under `taxonomy/extensions/<ns>/`, mapped to
+   exactly one target class and one of the five primitives (§3).
 3. **Add a `[[extension]]` entry** to [`../registry.toml`](../registry.toml) with
-   `id`, `kind` (`class` | `extend`), `primitive`, `summary`, `vectors`, `status`
-   = `"active"`, and `registered`.
+   `id`, `kind`, `target_class`, `primitive`, `manifest`, `summary`, `vectors`,
+   `status = "active"`, and `registered`.
 4. **Ship classify vectors.** Add a `taxonomy-classify` golden set covering the
    extension (input facts → expected `<ns>/<name>` class + primitive +
    `taxonomy_hash`), generated from the reference — **never hand-written**. The
@@ -129,7 +130,7 @@ leaf-extension does not, but it always requires the vectors above.
 - An extension is **retired** by setting `status = "deprecated"` (and optionally
   `superseded_by`), **never** by deletion. Old receipts that referenced the
   extension must still resolve, and old `taxonomy_hash` versions that included it
-  stay published and verifiable forever ([ADR-0012](../../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md)).
+  stay published and verifiable forever.
 - A namespace, once allocated, is never reassigned to a different owner.
 - A change to an extension's *behavior* is a new immutable taxonomy version (a new
   `taxonomy_hash`), the same as any taxonomy change — see
@@ -139,10 +140,18 @@ leaf-extension does not, but it always requires the vectors above.
 
 ## 6. The current registry
 
-The core HESO/1 taxonomy ships with **zero** registered extensions. The empty
-[`../registry.toml`](../registry.toml) is intentional — it stands the process up
-before anyone needs it, so the first third-party namespace has a real, discoverable
-home rather than an ad-hoc edit. See the commented example shape in that file.
+The registry currently allocates the first-party `heso` namespace and active
+well-known provider packs:
+
+- `heso/payment-providers`
+- `heso/identity-providers`
+- `heso/secret-stores`
+- `heso/model-providers`
+- `heso/messaging-providers`
+
+These packs are governed registry data, not core spine. They can grow by
+published versioned manifests and vectors without turning HESO/1 into a giant
+hard-coded vendor list.
 
 ---
 
@@ -155,5 +164,6 @@ home rather than an ad-hoc edit. See the commented example shape in that file.
 - [`../GOVERNANCE.md`](../GOVERNANCE.md) — versioning & the extension policy.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — the contribution + conformance-vector
   requirement.
-- [`../taxonomy.toml`](../taxonomy.toml) — the gold-master data and its extension
-  grammar (`[[class]]` / `[[extend]]`, monotonic narrowing).
+- [`../taxonomy.toml`](../taxonomy.toml) and
+  [`../taxonomy/extensions/`](../taxonomy/extensions/) — the core spine and
+  registered extension manifests.

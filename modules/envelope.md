@@ -4,7 +4,11 @@
 
 The envelope module specifies how a HESO [Action Receipt](./action-receipt.md) is wrapped as an **in-toto Statement** carrying a HESO/1 `predicateType`, and how that Statement is signed inside a **DSSE (Dead Simple Signing Envelope) v1.0.2** envelope.
 
-HESO does **not** invent a signing format. It adopts in-toto + DSSE so a relying party can verify a receipt's authenticity with **off-the-shelf in-toto/DSSE tooling** — the same way SLSA consumers verify provenance — and reserves all HESO-specific logic for *interpreting* the predicate, whose schema is the open [taxonomy](./taxonomy.md). This is the deliberate adoption decision in [ADR 0009](../../redesign/decisions/0009-in-toto-dsse-envelope.md); the SLSA "open predicate spec + closed builder" split is the literal precedent.
+HESO does **not** invent a signing envelope. It adopts in-toto + DSSE so standard
+tooling can verify that a Statement body was signed with the expected key. HESO
+trust still requires HESO-specific receipt verification: canonical receipt hash,
+signature roles, chain/quorum/time rules when present, and taxonomy
+re-derivation for ERT receipts.
 
 This module is conformance-claimable independently of `time-anchor`, `quorum`, and `transparency`. The single load-bearing, most error-prone rule in the entire standard — the **PAE byte formula** ([§4](#4-the-pae-byte-formula-normative)) — is specified here exactly and is pinned by the `dsse-pae` conformance vector. Every conformant signer and every clean-room verifier MUST implement it byte-for-byte.
 
@@ -12,12 +16,13 @@ This module is conformance-claimable independently of `time-anchor`, `quorum`, a
 
 ## 1. The verification contract
 
-For a relying party, verifying a HESO receipt collapses to **two checks**, neither of which requires HESO-specific signing code:
+For a relying party, verifying a DSSE-wrapped HESO receipt has two layers:
 
-1. **Verify the DSSE envelope** — recompute the PAE ([§4](#4-the-pae-byte-formula-normative)) over the raw Statement body and check the signature(s) against the signer's public key(s) ([§5](#5-verification)). Standard DSSE tooling does this.
-2. **Verify the transparency inclusion proof** — check that the receipt's `action_hash` is included in the transparency log per [transparency.md](./transparency.md).
+1. **Verify the DSSE envelope** — recompute the PAE ([§4](#4-the-pae-byte-formula-normative)) over the raw Statement body and check the signature(s) against the signer's public key(s) ([§5](#5-verification)). Standard DSSE tooling can do this.
+2. **Verify the HESO predicate** — run the [action-receipt](./action-receipt.md) verifier over the Statement predicate and, when the receipt carries ERT, re-derive classification against the pinned taxonomy bundle hash. If the deployment requires transparency, verify the inclusion proof per [transparency.md](./transparency.md).
 
-HESO-specific knowledge is required only to *interpret* the predicate (what destructive primitive was classified), and that schema is the open [taxonomy](./taxonomy.md). Authenticity is established with standard tooling alone.
+DSSE establishes authenticity of the Statement bytes. It does not prove the HESO
+receipt is internally valid, correctly classified, or log-included.
 
 ---
 
@@ -42,7 +47,10 @@ Normative rules:
 - `subject` MUST be a non-empty array. Each entry MUST carry a `digest` map containing the key `blake3` whose value is the receipt's `action_hash` as 64-character lowercase hex (the same content hash that is the [transparency](./transparency.md) leaf value). The `name` is an implementation-chosen label for the action subject.
 - `predicateType` MUST be a stable HESO-owned URI. For the default v2 receipt it is `https://hesohq.dev/ActionReceipt/v2`. The legacy v1 receipt ([action-receipt-v1.md](./action-receipt-v1.md)) uses `https://hesohq.dev/ActionReceipt/v1`.
 - `predicate` MUST be the HESO/1 receipt body. **Its schema IS the destructive-primitive taxonomy** — the predicate carries the structural classification (`move-value` / `destroy` / `change-authority` / `disclose` / `execute`) defined in [taxonomy.md](./taxonomy.md). The taxonomy is the open, normative schema of the predicate; this module does not restate it.
-- The predicate MUST pin the taxonomy version/hash it was classified under ([ADR 0012](../../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md)). Verification of the *predicate's* classification is always against that pinned version, never the latest. (The DSSE signature in this module is independent of the taxonomy version — it covers whatever the body is.)
+- The predicate MUST pin the taxonomy bundle hash it was classified under.
+  Verification of the predicate's classification is always against that pinned
+  bundle, never the latest. The DSSE signature in this module is independent of
+  the taxonomy version; it covers whatever body bytes are present.
 
 The `predicateType` URI and its predicate schema are a **hard compatibility boundary**: once an external verifier ships against `https://hesohq.dev/ActionReceipt/v2`, that v2 predicate schema MUST NOT change incompatibly. A change is a new `predicateType` (e.g. `/v3`), with old and new coexisting.
 
@@ -136,7 +144,8 @@ DSSEv1 28 application/vnd.in-toto+json <LEN(B)> <body...>
 
 The kernel signer (`heso-action/export/dsse`), the clean-room Python verifier, and the WASM verify surface MUST all produce the identical PAE pre-image byte-for-byte. PAE is small but unforgiving — a **leading zero in `LEN`**, **signing over base64**, or a **stray newline in `body`** all silently break interop while looking correct in isolation. The guarantees that hold this together:
 
-1. **One reference implementation.** PAE lives once in the Rust kernel; the SDKs bind to it via FFI rather than re-implementing it ([architecture/kernel.md](../../redesign/architecture/kernel.md)).
+1. **One reference implementation.** PAE lives in the Rust kernel; SDKs should
+   bind to that implementation or match the conformance vector exactly.
 2. **A clean-room cross-check.** The Python verifier implements PAE *independently* and MUST agree — proving the formula is implementable from this spec, not just copyable from one codebase.
 3. **A golden vector.** `dsse-pae` pins the exact PAE pre-image bytes + signature for a known Statement, so any third party and CI confirm their implementation matches the published bytes before claiming conformance.
 
@@ -158,13 +167,21 @@ A verifier MUST treat any of the following as a verification failure: a malforme
 
 ## 6. Conformance
 
-This module is conformant when (a) this normative spec defines it, (b) the `dsse-pae` golden vector covers it, and (c) at least one clean-room implementation independent of the Rust kernel passes that vector. The `dsse-pae` vector (open, CC0) contains a golden Statement, its exact PAE pre-image bytes, the raw signature, and the assembled DSSE envelope; it is regenerated from the reference implementation in CI and the build fails on any drift. The Rust signer, the Python verifier, and the WASM surface all run it. See [conformance-and-envelope.md](../../redesign/standard/conformance-and-envelope.md) §2 and §5 for the vector inventory and the cross-language byte-identical harness.
+This module is conformant when (a) this normative spec defines it, (b) the
+`dsse-pae` golden vector covers it, and (c) at least one clean-room
+implementation independent of the Rust kernel passes that vector. The
+`dsse-pae` vector contains a golden Statement, its exact PAE pre-image bytes, the
+raw signature, and the assembled DSSE envelope; it is regenerated from the
+reference implementation in CI and the build fails on any drift.
 
 ---
 
 ## 7. Relationship to legacy exports
 
-The kernel additionally emits legacy COSE/CBOR exports. Those are an **export format**, not the canonical signing envelope. The DSSE envelope defined here is the canonical, off-the-shelf-verifiable on-the-wire shape; both forms are kept byte-stable and vector-backed during the transition, but a relying party verifies authenticity via DSSE ([ADR 0009](../../redesign/decisions/0009-in-toto-dsse-envelope.md)).
+The kernel additionally emits legacy COSE/CBOR exports. Those are an **export
+format**, not the canonical signing envelope. The DSSE envelope defined here is
+the canonical on-the-wire wrapper; both forms are kept byte-stable and
+vector-backed during the transition.
 
 ---
 
@@ -173,6 +190,4 @@ The kernel additionally emits legacy COSE/CBOR exports. Those are an **export fo
 - [action-receipt.md](./action-receipt.md) — the receipt that becomes the Statement predicate; its verify order runs after DSSE verification.
 - [taxonomy.md](./taxonomy.md) — the predicate schema. Canonical home of the destructive-primitive classification; never restated here.
 - [transparency.md](./transparency.md) — the inclusion proof that pairs with DSSE to complete the two-check verification contract.
-- [conformance-and-envelope.md](../../redesign/standard/conformance-and-envelope.md) — the canonical conformance + envelope reference, the `dsse-pae` vector, and the PAE rationale this module elaborates.
-- [ADR 0009 — in-toto Statement + DSSE](../../redesign/decisions/0009-in-toto-dsse-envelope.md) — the adoption decision and the SLSA precedent.
-- [ADR 0012 — pin at signing](../../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md) — the immutable taxonomy-version discipline the predicate pins to.
+- [`../vectors/`](../vectors/) — the conformance vectors, including `dsse-pae`.

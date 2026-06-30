@@ -1,0 +1,18 @@
+# heso/identity-providers — first-party IAM/auth host facts.
+
+id = "heso/identity-providers"
+version = 1
+status = "active"
+target_class = "identity_endpoint"
+primitive = "change-authority"
+summary = "Well-known IAM, auth, and SSO hosts that structurally indicate authority changes."
+registered = "2026-06-30"
+
+[[predicate]]
+kind = "host_set"
+host_suffixes = [
+  ".iam.amazonaws.com", ".sts.amazonaws.com", ".okta.com", ".auth0.com",
+  ".onelogin.com", ".pingidentity.com", ".login.microsoftonline.com",
+  ".accounts.google.com", ".admin.googleapis.com",
+]
+hosts = ["iam.amazonaws.com", "sts.amazonaws.com"]

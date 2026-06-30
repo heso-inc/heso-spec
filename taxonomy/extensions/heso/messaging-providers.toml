@@ -1,0 +1,18 @@
+# heso/messaging-providers — first-party messaging provider host facts.
+
+id = "heso/messaging-providers"
+version = 1
+status = "active"
+target_class = "messaging_endpoint"
+primitive = "execute"
+summary = "Well-known messaging and notification hosts that structurally indicate outbound communication."
+registered = "2026-06-30"
+
+[[predicate]]
+kind = "host_set"
+host_suffixes = [
+  ".slack.com", ".sendgrid.net", ".twilio.com", ".mailgun.net",
+  ".postmarkapp.com", ".graph.microsoft.com", ".discord.com",
+  ".telegram.org",
+]
+hosts = ["slack.com", "discord.com"]

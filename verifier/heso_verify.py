@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import datetime
 import hashlib
+import os
 import tomllib
 import uuid
 
@@ -755,6 +756,16 @@ VERB_TO_PRIMITIVE = {
     "tool_call": "execute",
 }
 
+KNOWN_PREDICATE_KINDS = {
+    "host_set",
+    "path_glob",
+    "method_set",
+    "argv_token",
+    "row_threshold",
+    "fact_flag",
+    "always",
+}
+
 
 def _glob_match(glob: str, path: str) -> bool:
     """Anchored glob over a request path: ``*`` matches within one path segment,
@@ -803,13 +814,9 @@ def _predicate_matches(pred: dict, facts: dict) -> bool:
         return any(t.lower() in tokens for t in pred.get("tokens", []))
     if kind == "row_threshold":
         rows = facts.get("row_count_estimate")
-        # The predicate matches only when a row count was OBSERVED and crosses the
-        # bound. An ABSENT row count is "this action is not a counted data read" —
-        # it does NOT match (otherwise bulk_data would swallow every action that
-        # carries no count, pre-empting model/messaging/generic). The taxonomy's
-        # "UNKNOWN fails SAFE" rule applies to an action already in a data-read
-        # lane whose count is indeterminate; expressing that needs a paired
-        # observed fact (e.g. a data-egress flag) and is a P2 classify refinement.
+        # The predicate matches only when a row count was observed and crosses the
+        # bound. An absent row count is a no-match; an observed but indeterminate
+        # count is represented by the row_count_unknown fact.
         if rows is None:
             return False
         return rows >= pred.get("threshold", 0)
@@ -830,12 +837,107 @@ def _normalize_facts(facts: dict) -> dict:
     return f
 
 
+def _load_toml(path: str) -> dict:
+    with open(path, "rb") as fh:
+        return tomllib.load(fh)
+
+
+def _repo_root_for_taxonomy(toml_path: str) -> str:
+    return os.path.dirname(os.path.abspath(toml_path))
+
+
+def _registry_path(toml_path: str) -> str:
+    return os.path.join(_repo_root_for_taxonomy(toml_path), "registry.toml")
+
+
+def _active_extension_entries(toml_path: str) -> list[dict]:
+    path = _registry_path(toml_path)
+    if not os.path.exists(path):
+        return []
+    registry = _load_toml(path)
+    namespaces = {ns["ns"] for ns in registry.get("namespace", [])}
+    entries = []
+    for entry in registry.get("extension", []):
+        if entry.get("status") != "active":
+            continue
+        extension_id = entry.get("id", "")
+        if "/" not in extension_id:
+            raise ValueError(f"extension id `{extension_id}` is not namespaced")
+        ns, _ = extension_id.split("/", 1)
+        if ns not in namespaces:
+            raise ValueError(f"extension `{extension_id}` uses unregistered namespace `{ns}`")
+        if entry.get("kind") != "extend":
+            raise ValueError(f"extension `{extension_id}` has unsupported kind `{entry.get('kind')}`")
+        if not entry.get("manifest"):
+            raise ValueError(f"extension `{extension_id}` is missing manifest")
+        entries.append(entry)
+    return entries
+
+
+def _extension_manifest_path(toml_path: str, entry: dict) -> str:
+    return os.path.join(_repo_root_for_taxonomy(toml_path), entry["manifest"])
+
+
+def _load_extension_manifest(toml_path: str, entry: dict) -> dict:
+    path = _extension_manifest_path(toml_path, entry)
+    manifest = _load_toml(path)
+    extension_id = entry["id"]
+    if manifest.get("id") != extension_id:
+        raise ValueError(
+            f"extension manifest `{path}` id `{manifest.get('id')}` does not match registry `{extension_id}`"
+        )
+    for key in ("version", "status", "target_class", "primitive", "predicate"):
+        if key not in manifest:
+            raise ValueError(f"extension `{extension_id}` is missing `{key}`")
+    if manifest["status"] != entry["status"]:
+        raise ValueError(f"extension `{extension_id}` status differs between registry and manifest")
+    if manifest["target_class"] != entry["target_class"]:
+        raise ValueError(f"extension `{extension_id}` target_class differs between registry and manifest")
+    if manifest["primitive"] != entry["primitive"]:
+        raise ValueError(f"extension `{extension_id}` primitive differs between registry and manifest")
+    for pred in manifest.get("predicate", []):
+        kind = pred.get("kind")
+        if kind not in KNOWN_PREDICATE_KINDS:
+            raise ValueError(f"extension `{extension_id}` names unknown predicate kind `{kind}`")
+        if kind == "always":
+            raise ValueError(f"extension `{extension_id}` may not add an always predicate")
+    return manifest
+
+
+def taxonomy_extensions(toml_path: str) -> list[dict]:
+    """Load active registry extension manifests in deterministic registry order."""
+    return [_load_extension_manifest(toml_path, entry) for entry in _active_extension_entries(toml_path)]
+
+
 def load_taxonomy(toml_path: str) -> list:
-    """Parse ``taxonomy.toml`` into the ordered list of classes (priority order =
-    file order). Reads the gold-master verbatim; no Rust dependency."""
-    with open(toml_path, "rb") as fh:
-        data = tomllib.load(fh)
-    return data.get("class", [])
+    """Parse ``taxonomy.toml`` plus active registry extensions into classes.
+
+    Priority order remains the core class order. Active `extend` manifests append
+    predicate rows to their target core class, so provider knowledge can grow
+    without becoming part of the spine itself.
+    """
+    data = _load_toml(toml_path)
+    classes = [{**cls, "predicate": list(cls.get("predicate", []))} for cls in data.get("class", [])]
+    classes_by_id = {cls["id"]: cls for cls in classes}
+    for cls in classes:
+        for pred in cls.get("predicate", []):
+            kind = pred.get("kind")
+            if kind not in KNOWN_PREDICATE_KINDS:
+                raise ValueError(f"class `{cls['id']}` names unknown predicate kind `{kind}`")
+
+    for ext in taxonomy_extensions(toml_path):
+        target_class = ext["target_class"]
+        if target_class not in classes_by_id:
+            raise ValueError(f"extension `{ext['id']}` targets unknown class `{target_class}`")
+        cls = classes_by_id[target_class]
+        expected_primitive = VERB_TO_PRIMITIVE[cls["coarse_verb"]]
+        if ext["primitive"] != expected_primitive:
+            raise ValueError(
+                f"extension `{ext['id']}` primitive `{ext['primitive']}` does not match "
+                f"target class `{target_class}` primitive `{expected_primitive}`"
+            )
+        cls["predicate"].extend(ext.get("predicate", []))
+    return classes
 
 
 def classify(facts: dict, classes: list) -> dict:
@@ -852,12 +954,20 @@ def classify(facts: dict, classes: list) -> dict:
         rows = cls.get("predicate", [])
         if any(_predicate_matches(p, f) for p in rows):
             verb = cls["coarse_verb"]
+            deny_unknown = cls["id"] == "unresolved"
+            if deny_unknown:
+                outcome = "residual"
+            elif cls["effect"] == "observe":
+                outcome = "observe"
+            else:
+                outcome = "destructive"
             return {
                 "class": cls["id"],
                 "verb": verb,
                 "primitive": VERB_TO_PRIMITIVE[verb],
                 "effect": cls["effect"],
-                "deny_unknown": cls["id"] == "unresolved",
+                "outcome": outcome,
+                "deny_unknown": deny_unknown,
             }
     # Unreachable for a well-formed taxonomy (the `always` residual is total).
     raise ValueError("taxonomy is not total: no class matched and no residual")
@@ -904,18 +1014,30 @@ def _taxonomy_predicate_to_value(p: dict) -> dict:
     raise ValueError(f"unknown taxonomy predicate kind {kind!r}")
 
 
+def _extension_projection(ext: dict) -> dict:
+    return {
+        "id": ext["id"],
+        "version": ext["version"],
+        "target_class": ext["target_class"],
+        "primitive": ext["primitive"],
+        "predicates": [_taxonomy_predicate_to_value(p) for p in ext.get("predicate", [])],
+    }
+
+
+def extension_hash(ext: dict) -> str:
+    return blake3(rfc8785.dumps(_extension_projection(ext))).hexdigest()
+
+
 def taxonomy_hash(toml_path: str) -> str:
     """``taxonomy_hash`` = BLAKE3 over the RFC-8785 (JCS) canonical projection of
-    the parsed, normative classification data — NOT comments, whitespace, or key
-    order. Mirrors taxonomy.md §4 and, byte-for-byte, the kernel
-    ``heso_engine::Taxonomy::to_canonical_value`` (taxonomy.rs).
+    the parsed, normative classification bundle — NOT comments, whitespace, or
+    key order. The bundle is the core taxonomy plus active registry extension
+    manifests.
 
-    The projection is ``{"version": 1, "classes": [{id, coarse_verb, effect,
-    predicates: [<normalized predicate>, ...]}, ...]}`` — the SAME shape the kernel
-    hashes, so this clean-room recompute reproduces the kernel golden
-    (``9f3bbaaf…``). (The pre-2026 clean-room projection dumped a bare list with raw
-    TOML predicate rows under a ``predicate`` key and diverged from the kernel; this
-    is the corrected, kernel-faithful projection.)
+    The projection is ``{"projection_version": 1, "coarse_verb_map": ...,
+    "classes": [...], "extensions": [{id, hash}, ...]}``. The class list is
+    projected after active `extend` manifests have been applied, and the extension
+    hash list makes the source package boundary explicit for offline verifiers.
     """
     classes = load_taxonomy(toml_path)
     proj_classes = [
@@ -927,7 +1049,16 @@ def taxonomy_hash(toml_path: str) -> str:
         }
         for cls in classes
     ]
-    projection = {"version": 1, "classes": proj_classes}
+    extensions = [
+        {"id": ext["id"], "hash": extension_hash(ext)}
+        for ext in sorted(taxonomy_extensions(toml_path), key=lambda item: item["id"])
+    ]
+    projection = {
+        "projection_version": 1,
+        "coarse_verb_map": VERB_TO_PRIMITIVE,
+        "classes": proj_classes,
+        "extensions": extensions,
+    }
     return blake3(rfc8785.dumps(projection)).hexdigest()
 
 

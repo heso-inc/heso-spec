@@ -35,6 +35,20 @@ had none.
 
 ## taxonomy
 
+### 1.1.0 — 2026-06-30 — taxonomy bundle + active first-party extension packs
+
+- `taxonomy_hash` now covers the validated taxonomy bundle: `taxonomy.toml`,
+  `registry.toml`, and every active extension manifest under `taxonomy/extensions/`.
+- Provider host lists moved out of the core spine into first-party registered
+  extension manifests (`heso/payment-providers`, `heso/identity-providers`,
+  `heso/secret-stores`, `heso/model-providers`, `heso/messaging-providers`).
+- `row_count_unknown` is now an explicit observed fact. Absent row count is a
+  no-match; observed-but-indeterminate row count fails safe into `bulk_data`.
+- New `taxonomy_hash`:
+  `ca210dacc5380f5d48cda60f91d79a2d8775638fe78f0a568fd3136b4f6b0408`.
+- Vectors: `taxonomy-classify` and wire vectors regenerated from the Rust
+  conformance binary and rechecked by the clean-room Python verifier.
+
 ### 1.0.0 — 2026-06-18 — initial normative prose + gold-master data
 
 - `taxonomy.toml` lifted **verbatim** (byte-identical) from the closed enterprise

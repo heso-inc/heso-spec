@@ -202,6 +202,13 @@ def run_taxonomy_classify(crown: dict, rep: Report) -> None:
         if actual != want:
             rep.fail(f"taxonomy_classify/{cid}: classification mismatch", want, actual)
             continue
+        if "expected_outcome" in case and got["outcome"] != case["expected_outcome"]:
+            rep.fail(
+                f"taxonomy_classify/{cid}: outcome mismatch",
+                case["expected_outcome"],
+                got["outcome"],
+            )
+            continue
         if case.get("deny_unknown") and not got["deny_unknown"]:
             rep.fail(f"taxonomy_classify/{cid}: residual not deny-unknown", True, False)
             continue

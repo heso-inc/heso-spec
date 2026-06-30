@@ -28,10 +28,10 @@ or that makes a conformant verifier reach the wrong verdict. Examples:
   **deny-unknown / residual** floor.
 - A `taxonomy_hash` or version-pinning weakness that lets the **pinned**
   classifier be spoofed, downgraded, or detached from the receipt (see
-  [ADR-0012](../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md)).
+  [GOVERNANCE §4](./GOVERNANCE.md#4-taxonomy_hash-and-compatibility-gating)).
 - A flaw in the in-toto/DSSE envelope binding — a signature-stripping,
-  payload-substitution, downgrade, or replay path
-  ([ADR-0009](../redesign/decisions/0009-in-toto-dsse-envelope.md)).
+  payload-substitution, downgrade, or replay path (see
+  [`modules/envelope.md`](./modules/envelope.md)).
 - A transparency-proof flaw (an inclusion/consistency proof that can be forged or
   that admits a split view).
 - A bug in a **reference verifier** in this repo that accepts a tampered record or
