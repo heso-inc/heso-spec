@@ -55,8 +55,8 @@ vocabulary, mapping to the same five primitives.
 - A namespace is allocated to **exactly one owner**, first-come, recorded once,
   and **never reassigned** (append-only).
 
-> **Distinct from policy-rule namespacing.** This registry governs *taxonomy-class*
-> extensions only. A customer naming a *local policy rule* `<ns>/<name>` in their
+> **Distinct from policy-rule namespacing.** This registry governs taxonomy
+> extension manifests only. A customer naming a *local policy rule* `<ns>/<name>` in their
 > `heso.toml` is a separate, local concern (RFC-0005) — a policy rule *references*
 > a primitive; it never extends the taxonomy and never appears in this registry.
 
@@ -65,13 +65,11 @@ vocabulary, mapping to the same five primitives.
 ## 3. What an extension may and may not do
 
 An extension is **add-only, namespaced, and monotonic** — exactly the grammar the
-taxonomy bundle loader enforces fail-closed:
+taxonomy bundle loader enforces fail-closed. HESO/1.1.0 supports registered
+`kind = "extend"` manifests only:
 
 An extension MAY:
 
-- Add a new `[[class]]` whose `id` is `<ns>/<name>`. A new class is inserted by
-  priority **just above the `unresolved` residual** — it can only **narrow** the
-  residual lane, never pre-empt a built-in dangerous lane.
 - Add predicate rows to a built-in class through an `extend` manifest — strictly
   **growing** what is caught. First-party provider packs use this for well-known
   host facts.
@@ -82,7 +80,7 @@ An extension MUST NOT:
   five canonical primitives.
 - Relabel a built-in class's `coarse_verb` / primitive to a **laxer** one
   (monotonic narrowing — never widen what reaches the world).
-- Add a class that laxes the `unresolved` residual.
+- Add a rule that laxes the `unresolved` residual.
 - Redefine, shadow, or remove a built-in (bare-name) id.
 - Weaken the taxonomy bundle hash. Active extensions are part of the bundle
   projection, and each extension also has its own content hash.
@@ -102,14 +100,14 @@ not a private edit to a vendored copy. The steps, per
    [`../registry.toml`](../registry.toml) with `ns`, `owner`, `contact`,
    `registered`, and an optional `homepage`. If your namespace already exists, skip
    this step.
-2. **Define the extension manifest** under `taxonomy/extensions/<ns>/`, mapped to
-   exactly one target class and one of the five primitives (§3).
+2. **Define the `extend` manifest** under `taxonomy/extensions/<ns>/`, mapped to
+   exactly one target class and that class's primitive (§3).
 3. **Add a `[[extension]]` entry** to [`../registry.toml`](../registry.toml) with
    `id`, `kind`, `target_class`, `primitive`, `manifest`, `summary`, `vectors`,
    `status = "active"`, and `registered`.
 4. **Ship classify vectors.** Add a `taxonomy-classify` golden set covering the
-   extension (input facts → expected `<ns>/<name>` class + primitive +
-   `taxonomy_hash`), generated from the reference — **never hand-written**. The
+   extension (input facts → expected target class + primitive + `taxonomy_hash`),
+   generated from the reference — **never hand-written**. The
    `vectors` field MUST point at them. An extension with no published classify
    vectors is **NOT conformant** and MUST NOT be merged.
 5. **Prove the second implementation agrees.** The clean-room verifier must
