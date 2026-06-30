@@ -16,11 +16,10 @@
 # the catalog pins the labels. Mirrors the existing controls.toml / catalog.toml
 # two-file, embedded-via-include_str!, fail-closed-parse precedent.
 #
-# THE THESIS (from .agents/classification-definitive.md §3a): classify an action
-# by the RESOURCE it structurally touches + its EFFECT, decided by a PURE
-# function over signed observed facts × this hashed taxonomy × a hashed policy —
-# NEVER by tool names or per-tool declarations. The same model that makes AWS
-# IAM / Cedar / VPC-SC complete + deterministic.
+# THE THESIS: classify an action by the RESOURCE it structurally touches + its
+# EFFECT, decided by a PURE function over signed observed facts × this hashed
+# taxonomy × a hashed policy — NEVER by tool names or per-tool declarations.
+# The same model that makes AWS IAM / Cedar / VPC-SC complete + deterministic.
 #
 # ORDER IS SEMANTIC. Classes are listed in PRIORITY order: the runtime evaluator
 # tries each `[[class]]` predicate top-to-bottom and the FIRST that matches wins
@@ -52,8 +51,8 @@
 #   method_set   — parsed HTTP method ∈ `methods`.
 #   argv_token   — a whole argv/SQL token ∈ `tokens` (token = a maximal
 #                  alphanumeric run; never an arbitrary substring).
-#   row_threshold— observed `row_count_estimate` ≥ `threshold` (or UNKNOWN, which
-#                  fails SAFE to the stricter lane).
+#   row_threshold— observed `row_count_estimate` ≥ `threshold`. An indeterminate
+#                  count is represented by the separate `row_count_unknown` fact.
 #   fact_flag    — a single signed boolean observed fact named by `flag` is true.
 #   always       — the unconditional residual (only the `unresolved` class).
 #
@@ -64,18 +63,15 @@
 #
 # Coarse-verb laxity lattice (strict → lax), used to reject a relabel that WIDENS:
 #   payment > delete > account_change > data_export > llm_call > http_request >
-#   tool_call. A customer override may only move a built-in DOWN-lattice is
-#   FORBIDDEN; it may keep the same verb or refuse. (Monotonic narrowing: never
-#   relabel a built-in to something laxer.)
+#   tool_call. A customer override may keep a built-in verb the same, but may
+#   never relabel it to something laxer. (Monotonic narrowing.)
 #
-# Registry extension is ADD-only + NAMESPACED + monotonic:
-#   * may ADD a new `[[class]]` (its id MUST be namespaced `<ns>/<name>`); a new
-#     class is inserted by priority just ABOVE `unresolved` (it can only NARROW
-#     the residual, never pre-empt a built-in dangerous lane).
-#   * may ADD members to a built-in class's predicate sets via `[[extend]]`
+# Registry extension is ADD-only + NAMESPACED + monotonic. HESO/1.1.0 supports
+# registered `extend` manifests only:
+#   * may ADD predicate rows to a built-in class
 #     (more hosts / suffixes / globs / tokens — strictly grows what is caught).
 #   * may NOT relabel a built-in class's coarse_verb to a laxer one, may NOT add
-#     an `unresolved`-laxing class, may NOT redefine a built-in id.
+#     an `unresolved`-laxing rule, may NOT redefine a built-in id.
 # The loader rejects any violation at load time (fail-closed).
 #
 # Pure data, NO crypto.

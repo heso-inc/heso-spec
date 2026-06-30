@@ -766,6 +766,17 @@ KNOWN_PREDICATE_KINDS = {
     "always",
 }
 
+KNOWN_FACT_FLAGS = {
+    "is_payment",
+    "effect_destructive",
+    "is_identity_change",
+    "is_secret",
+    "is_model_call",
+    "row_count_unknown",
+    "has_host",
+    "is_local_compute",
+}
+
 
 def _glob_match(glob: str, path: str) -> bool:
     """Anchored glob over a request path: ``*`` matches within one path segment,
@@ -797,10 +808,10 @@ def _predicate_matches(pred: dict, facts: dict) -> bool:
         host = facts.get("host")
         if not host:
             return False
-        host = host.lower()
-        if host in [h.lower() for h in pred.get("hosts", [])]:
+        host = str(host).strip().lower()
+        if host in {str(h).strip().lower() for h in pred.get("hosts", [])}:
             return True
-        return any(host.endswith(sfx) for sfx in pred.get("host_suffixes", []))
+        return any(host.endswith(str(sfx).strip().lower()) for sfx in pred.get("host_suffixes", []))
     if kind == "path_glob":
         path = facts.get("path")
         if not path:
@@ -808,10 +819,11 @@ def _predicate_matches(pred: dict, facts: dict) -> bool:
         return any(_glob_match(g, path) for g in pred.get("path_globs", []))
     if kind == "method_set":
         method = facts.get("method")
-        return method is not None and method in pred.get("methods", [])
+        methods = {str(m).strip().upper() for m in pred.get("methods", [])}
+        return method is not None and str(method).strip().upper() in methods
     if kind == "argv_token":
-        tokens = {t.lower() for t in facts.get("argv_tokens", [])}
-        return any(t.lower() in tokens for t in pred.get("tokens", []))
+        tokens = {str(t).strip().lower() for t in facts.get("argv_tokens", [])}
+        return any(str(t).strip().lower() in tokens for t in pred.get("tokens", []))
     if kind == "row_threshold":
         rows = facts.get("row_count_estimate")
         # The predicate matches only when a row count was observed and crosses the
@@ -853,7 +865,7 @@ def _registry_path(toml_path: str) -> str:
 def _active_extension_entries(toml_path: str) -> list[dict]:
     path = _registry_path(toml_path)
     if not os.path.exists(path):
-        return []
+        raise FileNotFoundError(f"taxonomy bundle missing registry.toml next to {toml_path}")
     registry = _load_toml(path)
     namespaces = {ns["ns"] for ns in registry.get("namespace", [])}
     entries = []
@@ -896,10 +908,8 @@ def _load_extension_manifest(toml_path: str, entry: dict) -> dict:
     if manifest["primitive"] != entry["primitive"]:
         raise ValueError(f"extension `{extension_id}` primitive differs between registry and manifest")
     for pred in manifest.get("predicate", []):
-        kind = pred.get("kind")
-        if kind not in KNOWN_PREDICATE_KINDS:
-            raise ValueError(f"extension `{extension_id}` names unknown predicate kind `{kind}`")
-        if kind == "always":
+        _validate_taxonomy_predicate(f"extension `{extension_id}`", pred)
+        if pred.get("kind") == "always":
             raise ValueError(f"extension `{extension_id}` may not add an always predicate")
     return manifest
 
@@ -921,9 +931,7 @@ def load_taxonomy(toml_path: str) -> list:
     classes_by_id = {cls["id"]: cls for cls in classes}
     for cls in classes:
         for pred in cls.get("predicate", []):
-            kind = pred.get("kind")
-            if kind not in KNOWN_PREDICATE_KINDS:
-                raise ValueError(f"class `{cls['id']}` names unknown predicate kind `{kind}`")
+            _validate_taxonomy_predicate(f"class `{cls['id']}`", pred)
 
     for ext in taxonomy_extensions(toml_path):
         target_class = ext["target_class"]
@@ -974,6 +982,46 @@ def classify(facts: dict, classes: list) -> dict:
 
 
 _KNOWN_HTTP_METHODS = {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
+
+
+def _validate_taxonomy_predicate(owner: str, p: dict) -> None:
+    kind = p.get("kind")
+    if kind not in KNOWN_PREDICATE_KINDS:
+        raise ValueError(f"{owner} names unknown predicate kind `{kind}`")
+    if kind == "host_set":
+        if not p.get("hosts", []) and not p.get("host_suffixes", []):
+            raise ValueError(f"{owner} host_set names no hosts and no host_suffixes")
+        return
+    if kind == "path_glob":
+        if not p.get("path_globs", []):
+            raise ValueError(f"{owner} path_glob names no globs")
+        return
+    if kind == "method_set":
+        if not p.get("methods", []):
+            raise ValueError(f"{owner} method_set names no methods")
+        for method in p["methods"]:
+            up = str(method).strip().upper()
+            if up not in _KNOWN_HTTP_METHODS:
+                raise ValueError(f"{owner} method_set names unknown HTTP method {method!r}")
+        return
+    if kind == "argv_token":
+        if not p.get("tokens", []):
+            raise ValueError(f"{owner} argv_token names no tokens")
+        return
+    if kind == "row_threshold":
+        threshold = p.get("threshold")
+        if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold <= 0:
+            raise ValueError(f"{owner} row_threshold must have threshold > 0")
+        return
+    if kind == "fact_flag":
+        flag = p.get("flag")
+        if flag not in KNOWN_FACT_FLAGS:
+            raise ValueError(f"{owner} fact_flag names unknown flag `{flag}`")
+        return
+    if kind == "always":
+        list_params = ("hosts", "host_suffixes", "path_globs", "methods", "tokens")
+        if any(p.get(param, []) for param in list_params) or "threshold" in p or "flag" in p:
+            raise ValueError(f"{owner} always carries parameters")
 
 
 def _taxonomy_predicate_to_value(p: dict) -> dict:

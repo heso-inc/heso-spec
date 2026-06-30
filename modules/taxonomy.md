@@ -362,29 +362,26 @@ hard-coded branches in the classifier.
   (deny-unknown applies to *names* too).
 - An extension `id` MUST be namespaced `<ns>/<name>` (e.g.
   `acme/internal-ledger`, `myco/pii-egress`). `<ns>` is the registered namespace;
-  `<name>` is the extension-local class name.
-- An extension class MUST map, structurally, onto exactly one of the **five
-  canonical primitives** (§1). Extensions add resolution detail; they MUST NOT
-  invent a sixth primitive. The spine is fixed; only the leaves grow.
+  `<name>` is the extension-local manifest name.
+- HESO/1.1.0 registry entries support `kind = "extend"` only. An extension
+  manifest MUST target one existing core class and MUST map to that class's
+  primitive. Extensions add resolution detail; they MUST NOT invent a sixth
+  primitive. The spine is fixed; only the leaves grow.
 
 ### 7.2 What an extension MAY and MUST NOT do
 
 A conformant loader MUST enforce, fail-closed at load time:
 
-- An extension **MAY add a new `[[class]]`** (namespaced id). A new class is
-  inserted by priority **just above `unresolved`** — it can only **narrow the
-  residual**, never pre-empt a built-in dangerous lane.
-- An extension **MAY add predicate rows** to a built-in class via an `extend`
+- An extension **MAY add predicate rows** to one built-in class via an `extend`
   manifest. First-party provider packs use this to add `host_set` rows outside
   the core spine. This strictly **grows** what is caught, which is always safe.
 - An extension **MUST NOT** relabel a built-in class's `coarse_verb` to a laxer
-  one (§6.1 lattice), **MUST NOT** add an `unresolved`-laxing class, and **MUST
+  one (§6.1 lattice), **MUST NOT** add an `unresolved`-laxing rule, and **MUST
   NOT** redefine a built-in `id`.
 
-Because extensions can only narrow the residual or grow what an existing
-dangerous class catches, an extension can never make a previously-gated action
-*pass* — it can only make a previously-unresolved action resolve to a (still at
-least as strict) named class.
+Because extensions can only grow what an existing class catches, an extension can
+never make a previously-gated action *pass* — it can only move an action into a
+same-or-stricter named core lane.
 
 ### 7.3 The registry process
 
@@ -397,9 +394,10 @@ process:
    are first-come, collision-free, and recorded in the registry; a namespace MUST
    NOT be reassigned once allocated.
 2. **Manifest registration.** Registering an extension means contributing (a)
-   its namespaced `id` + target class + primitive, (b) its manifest file with
-   predicate rows over the **same closed vocabulary** (§2 — no new predicate
-   kinds), and (c) `taxonomy-classify` vectors proving its behavior.
+   its namespaced `id` + `kind = "extend"` + target class + primitive, (b) its
+   manifest file with predicate rows over the **same closed vocabulary** (§2 —
+   no new predicate kinds), and (c) `taxonomy-classify` vectors proving its
+   behavior.
    Registration is a spec-repo change with vectors, **not** a private edit to a
    vendored copy.
 3. **Discovery.** The registry gives relying parties a single place to look up

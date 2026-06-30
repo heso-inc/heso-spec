@@ -26,10 +26,10 @@ the suite. Governance artifacts (this file, `GOVERNANCE.md`, `CONTRIBUTING.md`,
 `SECURITY.md`, the taxonomy-extension registry) are added — the repo previously
 had none.
 
-- Realises: [refactor/spec-repo.md](../redesign/refactor/spec-repo.md) (P1).
-- Locks applied: [ADR-0001 — taxonomy spine (5 primitives)](../redesign/decisions/0001-taxonomy-spine.md),
-  [ADR-0009 — in-toto/DSSE envelope](../redesign/decisions/0009-in-toto-dsse-envelope.md),
-  [ADR-0012 — versioning, pin at signing](../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md).
+- Realises the P1 open-spec absorption: HESO/1 moves into this repo as the
+  public source of truth.
+- Locks applied: the taxonomy spine (5 primitives), the in-toto/DSSE envelope,
+  and versioning / pin-at-signing discipline.
 
 ---
 
@@ -59,9 +59,8 @@ had none.
   `taxonomy_hash` canonicalization (BLAKE3 over the RFC-8785/JCS projection of
   the normative classification data only), and the FROZEN-7 → 5 reconciliation.
 - Canonical spine fixed at **5 primitives** with the 7 coarse verbs as a
-  descriptive sub-vocabulary mapping onto it ([ADR-0001](../redesign/decisions/0001-taxonomy-spine.md)).
-- Versioning policy: pin-at-signing, immutable published versions
-  ([ADR-0012](../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md)).
+  descriptive sub-vocabulary mapping onto it.
+- Versioning policy: pin-at-signing, immutable published versions.
 - New: open, machine-readable taxonomy-extension registry
   ([`registry.toml`](./registry.toml) + [`modules/taxonomy-extension-registry.md`](./modules/taxonomy-extension-registry.md)).
 - Vectors: `taxonomy-classify` golden set (generated from the reference).
@@ -162,8 +161,7 @@ had none.
   `predicateType` whose predicate schema **is** the taxonomy) inside a DSSE
   v1.0.2 envelope. SLSA precedent (open predicate, closed builder).
 - The exact PAE pre-image rule is normative and byte-pinned across the Rust
-  signer, the Python verifier, and the WASM surface
-  ([ADR-0009](../redesign/decisions/0009-in-toto-dsse-envelope.md)).
+  signer, the Python verifier, and the WASM surface.
 - Vectors: `dsse-pae` golden (the single most error-prone byte-level rule).
 
 ---
