@@ -869,9 +869,13 @@ def _active_extension_entries(toml_path: str) -> list[dict]:
     registry = _load_toml(path)
     namespaces = {ns["ns"] for ns in registry.get("namespace", [])}
     entries = []
+    active_ids = set()
     for entry in registry.get("extension", []):
-        if entry.get("status") != "active":
+        status = entry.get("status")
+        if status == "deprecated":
             continue
+        if status != "active":
+            raise ValueError(f"extension `{entry.get('id', '')}` has unsupported status `{status}`")
         extension_id = entry.get("id", "")
         if "/" not in extension_id:
             raise ValueError(f"extension id `{extension_id}` is not namespaced")
@@ -880,6 +884,9 @@ def _active_extension_entries(toml_path: str) -> list[dict]:
             raise ValueError(f"extension `{extension_id}` uses unregistered namespace `{ns}`")
         if entry.get("kind") != "extend":
             raise ValueError(f"extension `{extension_id}` has unsupported kind `{entry.get('kind')}`")
+        if extension_id in active_ids:
+            raise ValueError(f"duplicate active extension id `{extension_id}`")
+        active_ids.add(extension_id)
         if not entry.get("manifest"):
             raise ValueError(f"extension `{extension_id}` is missing manifest")
         entries.append(entry)
@@ -989,32 +996,52 @@ def _validate_taxonomy_predicate(owner: str, p: dict) -> None:
     if kind not in KNOWN_PREDICATE_KINDS:
         raise ValueError(f"{owner} names unknown predicate kind `{kind}`")
     if kind == "host_set":
+        _reject_unexpected_predicate_params(owner, p, {"hosts", "host_suffixes"})
         if not p.get("hosts", []) and not p.get("host_suffixes", []):
             raise ValueError(f"{owner} host_set names no hosts and no host_suffixes")
+        _require_nonempty_strings(owner, "hosts", p.get("hosts", []))
+        _require_nonempty_strings(owner, "host_suffixes", p.get("host_suffixes", []))
         return
     if kind == "path_glob":
+        _reject_unexpected_predicate_params(owner, p, {"path_globs"})
         if not p.get("path_globs", []):
             raise ValueError(f"{owner} path_glob names no globs")
+        _require_nonempty_strings(owner, "path_globs", p.get("path_globs", []))
         return
     if kind == "method_set":
+        _reject_unexpected_predicate_params(owner, p, {"methods"})
         if not p.get("methods", []):
             raise ValueError(f"{owner} method_set names no methods")
         for method in p["methods"]:
+            if not isinstance(method, str):
+                raise ValueError(f"{owner} method_set contains non-string method {method!r}")
             up = str(method).strip().upper()
+            if not up:
+                raise ValueError(f"{owner} method_set contains empty method")
             if up not in _KNOWN_HTTP_METHODS:
                 raise ValueError(f"{owner} method_set names unknown HTTP method {method!r}")
         return
     if kind == "argv_token":
+        _reject_unexpected_predicate_params(owner, p, {"tokens"})
         if not p.get("tokens", []):
             raise ValueError(f"{owner} argv_token names no tokens")
+        _require_nonempty_strings(owner, "tokens", p.get("tokens", []))
         return
     if kind == "row_threshold":
+        _reject_unexpected_predicate_params(owner, p, {"threshold"})
         threshold = p.get("threshold")
         if not isinstance(threshold, int) or isinstance(threshold, bool) or threshold <= 0:
             raise ValueError(f"{owner} row_threshold must have threshold > 0")
         return
     if kind == "fact_flag":
+        _reject_unexpected_predicate_params(owner, p, {"flag"})
         flag = p.get("flag")
+        if not isinstance(flag, str):
+            raise ValueError(f"{owner} fact_flag names non-string flag `{flag}`")
+        if not flag.strip():
+            raise ValueError(f"{owner} fact_flag names empty flag")
+        if flag != flag.strip():
+            raise ValueError(f"{owner} fact_flag flag has surrounding whitespace")
         if flag not in KNOWN_FACT_FLAGS:
             raise ValueError(f"{owner} fact_flag names unknown flag `{flag}`")
         return
@@ -1022,6 +1049,23 @@ def _validate_taxonomy_predicate(owner: str, p: dict) -> None:
         list_params = ("hosts", "host_suffixes", "path_globs", "methods", "tokens")
         if any(p.get(param, []) for param in list_params) or "threshold" in p or "flag" in p:
             raise ValueError(f"{owner} always carries parameters")
+
+
+def _reject_unexpected_predicate_params(owner: str, p: dict, allowed: set[str]) -> None:
+    for field in ("hosts", "host_suffixes", "path_globs", "methods", "tokens"):
+        if field not in allowed and p.get(field, []):
+            raise ValueError(f"{owner} {p.get('kind')} has unexpected `{field}` parameter")
+    for field in ("threshold", "flag"):
+        if field not in allowed and field in p:
+            raise ValueError(f"{owner} {p.get('kind')} has unexpected `{field}` parameter")
+
+
+def _require_nonempty_strings(owner: str, field: str, values: list) -> None:
+    for value in values:
+        if not isinstance(value, str):
+            raise ValueError(f"{owner} {field} contains non-string value {value!r}")
+        if not value.strip():
+            raise ValueError(f"{owner} {field} contains empty string")
 
 
 def _taxonomy_predicate_to_value(p: dict) -> dict:
