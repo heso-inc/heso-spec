@@ -251,22 +251,22 @@
       {
         "chain_present": false,
         "desc": "ERT-present payment (move-value / allow) \u2014 taxonomy_hash + resource_class present",
-        "envelope_canonical_bytes_hex": "7b22616374696f6e5f68617368223a2266383662333539303933386138633239663861323863653863316366396634663362626431333361366136376337666261396161316365666162396232333932222c22636861696e5f68656164223a2230303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030222c22636f617273655f76657262223a227061796d656e74222c226465636973696f6e223a22616c6c6f77222c226f636375727265645f6174223a22323032362d30352d32395431323a30303a30305a222c227072696d6974697665223a226d6f76652d76616c7565222c227265736f757263655f636c617373223a227061796d656e745f656e64706f696e74222c227461786f6e6f6d795f68617368223a2263613231306461636335333830663564343863646136306639316437396132643837373536333866653738663061353638666433313336623466366230343038222c2274727573745f6c6576656c223a224c30227d",
+        "envelope_canonical_bytes_hex": "7b22616374696f6e5f68617368223a2237366261653639663839663632626266373661336563656161343438336130653835323062386262353637306230393866333837656635653066663434313562222c22636861696e5f68656164223a2230303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030222c22636f617273655f76657262223a227061796d656e74222c226465636973696f6e223a22616c6c6f77222c226f636375727265645f6174223a22323032362d30352d32395431323a30303a30305a222c227072696d6974697665223a226d6f76652d76616c7565222c227265736f757263655f636c617373223a227061796d656e745f656e64706f696e74222c227461786f6e6f6d795f68617368223a2237653466663839646338656661353434376334643038323832626239323935326436323536613339316238663938343434373838333965643034666636336131222c2274727573745f6c6576656c223a224c30227d",
         "envelope_json": {
-          "action_hash": "f86b3590938a8c29f8a28ce8c1cf9f4f3bbd133a6a67c7fba9aa1cefab9b2392",
+          "action_hash": "76bae69f89f62bbf76a3eceaa4483a0e8520b8bb5670b098f387ef5e0ff4415b",
           "chain_head": "0000000000000000000000000000000000000000000000000000000000000000",
           "coarse_verb": "payment",
           "decision": "allow",
           "occurred_at": "2026-05-29T12:00:00Z",
           "primitive": "move-value",
           "resource_class": "payment_endpoint",
-          "taxonomy_hash": "ca210dacc5380f5d48cda60f91d79a2d8775638fe78f0a568fd3136b4f6b0408",
+          "taxonomy_hash": "7e4ff89dc8efa5447c4d08282bb92952d6256a391b8f9844478839ed04ff63a1",
           "trust_level": "L0"
         },
         "ert_present": true,
         "expected_verdict": "Valid",
         "id": "CE-ERT-PRESENT",
-        "signature_b64": "hE+ZL4GXbaXMyF7NorRXXCimROahzsrNteH5bWOCOZpg76a1HP6kMjmtMWWwvkPNM9GjxQpDMUfuXTqnSsnmBA==",
+        "signature_b64": "itUMl16Mrwc3nxO1kAfkaBhrV4fjaIJjCkJzECSstj5FjQ0+QpTVLvkneLpBEQCQjHHFhuyyeMoz4LrHzITJBQ==",
         "signer_fpr": "51f1365add907c3dcaead8fae90cfe55902638248377b4dd1db501b11554ac46",
         "signer_pubkey_b64": "O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik="
       },
@@ -392,7 +392,7 @@
           "session_id": "sess-wire-01",
           "signature": "pzmsuy4FKrjRxhXtkN+XScHO5YenJSKuLGxrsyfa1QL10WApitqEXM6K8gMd9UNkzyO0FbIgGgF4XH42j56HBA==",
           "signer_fpr": "51f1365add907c3dcaead8fae90cfe55902638248377b4dd1db501b11554ac46",
-          "taxonomy_hash": "ca210dacc5380f5d48cda60f91d79a2d8775638fe78f0a568fd3136b4f6b0408",
+          "taxonomy_hash": "7e4ff89dc8efa5447c4d08282bb92952d6256a391b8f9844478839ed04ff63a1",
           "trust_level": "L0",
           "wire_version": "heso-commitment/v1"
         }
@@ -463,7 +463,7 @@
           "session_id": "sess-wire-01",
           "signature": "TiFZdjHumYocs0TLmoy+bjvXU3Mc0Yg+YzXbqZ+fawVWrguz6znniWUDFwkgd4I1jk/246ctlLZe8hEkURyJDw==",
           "signer_fpr": "51f1365add907c3dcaead8fae90cfe55902638248377b4dd1db501b11554ac46",
-          "taxonomy_hash": "ca210dacc5380f5d48cda60f91d79a2d8775638fe78f0a568fd3136b4f6b0408",
+          "taxonomy_hash": "7e4ff89dc8efa5447c4d08282bb92952d6256a391b8f9844478839ed04ff63a1",
           "trust_level": "L0",
           "wire_version": "heso-commitment/v1"
         }
@@ -534,7 +534,7 @@
           "session_id": "sess-wire-02",
           "signature": "e8it7ldLNdNUpk3+5a541BaAvMryRdr0CHpg/wra8j8+7MxBCYmJCiG1U84elvcdV+pX5dwaZDCDMk1RglLnBw==",
           "signer_fpr": "51f1365add907c3dcaead8fae90cfe55902638248377b4dd1db501b11554ac46",
-          "taxonomy_hash": "ca210dacc5380f5d48cda60f91d79a2d8775638fe78f0a568fd3136b4f6b0408",
+          "taxonomy_hash": "7e4ff89dc8efa5447c4d08282bb92952d6256a391b8f9844478839ed04ff63a1",
           "trust_level": "L0",
           "wire_version": "heso-commitment/v1"
         }
@@ -557,7 +557,7 @@
     "regenerated_by": "DEFERRED \u2014 no `heso-conformance commitment` subcommand yet (P3 blocker)",
     "signer_fpr": "51f1365add907c3dcaead8fae90cfe55902638248377b4dd1db501b11554ac46",
     "source": "commitment-store.md \u00a73.1/\u00a74 + ADR-0003 + ADR-0004 (recorder Transport)",
-    "taxonomy_hash": "ca210dacc5380f5d48cda60f91d79a2d8775638fe78f0a568fd3136b4f6b0408",
+    "taxonomy_hash": "7e4ff89dc8efa5447c4d08282bb92952d6256a391b8f9844478839ed04ff63a1",
     "wire_endpoint": "POST /v1/commitments",
     "wire_keys": [
       "wire_version",
@@ -649,7 +649,7 @@
     ],
     "provenance": "spec-derived",
     "source": "commitment-store.md \u00a73.1 (primitive_enum) + taxonomy_classify goldens",
-    "taxonomy_hash": "ca210dacc5380f5d48cda60f91d79a2d8775638fe78f0a568fd3136b4f6b0408"
+    "taxonomy_hash": "7e4ff89dc8efa5447c4d08282bb92952d6256a391b8f9844478839ed04ff63a1"
   },
   "redact_before_sign": {
     "algorithm": "salted-blake3/v1",
@@ -754,7 +754,7 @@
       "session_id": "sess-wire-03",
       "signature": "KNGhz0ZLOwqlSDBiNwSZb/0nzYQ90OZvZw0Qj8ujH8w/0YGyxGkFqMwW3kS3CiUGPCboK+WtqRq3aMUYu/83CA==",
       "signer_fpr": "51f1365add907c3dcaead8fae90cfe55902638248377b4dd1db501b11554ac46",
-      "taxonomy_hash": "ca210dacc5380f5d48cda60f91d79a2d8775638fe78f0a568fd3136b4f6b0408",
+      "taxonomy_hash": "7e4ff89dc8efa5447c4d08282bb92952d6256a391b8f9844478839ed04ff63a1",
       "trust_level": "L0",
       "wire_version": "heso-commitment/v1"
     }

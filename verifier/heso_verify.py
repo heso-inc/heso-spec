@@ -23,6 +23,7 @@ import base64
 import datetime
 import hashlib
 import os
+import re
 import tomllib
 import uuid
 
@@ -867,34 +868,46 @@ def _active_extension_entries(toml_path: str) -> list[dict]:
     if not os.path.exists(path):
         raise FileNotFoundError(f"taxonomy bundle missing registry.toml next to {toml_path}")
     registry = _load_toml(path)
-    namespaces = {ns["ns"] for ns in registry.get("namespace", [])}
+    namespaces = set()
+    for row in registry.get("namespace", []):
+        ns = _validate_namespace(row.get("ns"))
+        if ns in namespaces:
+            raise ValueError(f"duplicate namespace `{ns}`")
+        owner = row.get("owner")
+        if not isinstance(owner, str) or not owner.strip():
+            raise ValueError(f"namespace `{ns}` is missing owner")
+        namespaces.add(ns)
     entries = []
-    active_ids = set()
+    seen_ids = set()
     for entry in registry.get("extension", []):
-        status = entry.get("status")
-        if status == "deprecated":
-            continue
-        if status != "active":
-            raise ValueError(f"extension `{entry.get('id', '')}` has unsupported status `{status}`")
         extension_id = entry.get("id", "")
-        if "/" not in extension_id:
-            raise ValueError(f"extension id `{extension_id}` is not namespaced")
-        ns, _ = extension_id.split("/", 1)
+        ns, _ = _split_extension_id(extension_id)
+        if extension_id in seen_ids:
+            raise ValueError(f"duplicate extension id `{extension_id}`")
+        seen_ids.add(extension_id)
         if ns not in namespaces:
             raise ValueError(f"extension `{extension_id}` uses unregistered namespace `{ns}`")
         if entry.get("kind") != "extend":
             raise ValueError(f"extension `{extension_id}` has unsupported kind `{entry.get('kind')}`")
-        if extension_id in active_ids:
-            raise ValueError(f"duplicate active extension id `{extension_id}`")
-        active_ids.add(extension_id)
-        if not entry.get("manifest"):
-            raise ValueError(f"extension `{extension_id}` is missing manifest")
+        status = entry.get("status")
+        if status == "deprecated":
+            continue
+        if status != "active":
+            raise ValueError(f"extension `{extension_id}` has unsupported status `{status}`")
+        _validate_manifest_ref(extension_id, entry.get("manifest"))
+        _validate_vector_ref(toml_path, extension_id, entry.get("vectors"))
         entries.append(entry)
     return entries
 
 
 def _extension_manifest_path(toml_path: str, entry: dict) -> str:
-    return os.path.join(_repo_root_for_taxonomy(toml_path), entry["manifest"])
+    manifest = _validate_manifest_ref(entry["id"], entry.get("manifest"))
+    root = _repo_root_for_taxonomy(toml_path)
+    path = os.path.normpath(os.path.join(root, manifest))
+    extensions_root = os.path.join(root, "taxonomy", "extensions")
+    if not path.startswith(extensions_root + os.sep):
+        raise ValueError(f"extension `{entry['id']}` manifest path escapes taxonomy/extensions/")
+    return path
 
 
 def _load_extension_manifest(toml_path: str, entry: dict) -> dict:
@@ -989,6 +1002,54 @@ def classify(facts: dict, classes: list) -> dict:
 
 
 _KNOWN_HTTP_METHODS = {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
+_LOWER_KEBAB_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+_EXTENSION_ID_RE = re.compile(r"^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$")
+
+
+def _split_extension_id(extension_id: object) -> tuple[str, str]:
+    if not isinstance(extension_id, str) or not _EXTENSION_ID_RE.fullmatch(extension_id):
+        raise ValueError(
+            f"extension id `{extension_id}` must be `<ns>/<lower-kebab-name>`"
+        )
+    ns, name = extension_id.split("/", 1)
+    return ns, name
+
+
+def _validate_namespace(ns: object) -> str:
+    if not isinstance(ns, str) or not _LOWER_KEBAB_RE.fullmatch(ns):
+        raise ValueError(f"namespace `{ns}` must be a lower-kebab token")
+    return ns
+
+
+def _validate_manifest_ref(extension_id: str, manifest: object) -> str:
+    ns, name = _split_extension_id(extension_id)
+    expected = f"taxonomy/extensions/{ns}/{name}.toml"
+    if manifest != expected:
+        raise ValueError(
+            f"extension `{extension_id}` manifest must be `{expected}`, got `{manifest}`"
+        )
+    return expected
+
+
+def _validate_vector_ref(toml_path: str, extension_id: str, vectors: object) -> None:
+    if not isinstance(vectors, str) or not vectors.strip():
+        raise ValueError(f"extension `{extension_id}` is missing classify vectors")
+    rel, sep, fragment = vectors.partition("#")
+    if sep != "#" or fragment != "taxonomy_classify":
+        raise ValueError(
+            f"extension `{extension_id}` vectors must point to `#taxonomy_classify`"
+        )
+    if os.path.isabs(rel) or rel.startswith("../") or "/../" in rel:
+        raise ValueError(f"extension `{extension_id}` vectors path escapes the bundle")
+    if not rel.startswith("vectors/"):
+        raise ValueError(f"extension `{extension_id}` vectors must live under vectors/")
+    root = _repo_root_for_taxonomy(toml_path)
+    path = os.path.normpath(os.path.join(root, rel))
+    vectors_root = os.path.join(root, "vectors")
+    if not path.startswith(vectors_root + os.sep):
+        raise ValueError(f"extension `{extension_id}` vectors path escapes vectors/")
+    if not os.path.isfile(path):
+        raise ValueError(f"extension `{extension_id}` vectors file is missing: {rel}")
 
 
 def _validate_taxonomy_predicate(owner: str, p: dict) -> None:
@@ -1012,6 +1073,8 @@ def _validate_taxonomy_predicate(owner: str, p: dict) -> None:
         _reject_unexpected_predicate_params(owner, p, {"methods"})
         if not p.get("methods", []):
             raise ValueError(f"{owner} method_set names no methods")
+        if not isinstance(p["methods"], list):
+            raise ValueError(f"{owner} method_set methods must be an array")
         for method in p["methods"]:
             if not isinstance(method, str):
                 raise ValueError(f"{owner} method_set contains non-string method {method!r}")
@@ -1046,21 +1109,22 @@ def _validate_taxonomy_predicate(owner: str, p: dict) -> None:
             raise ValueError(f"{owner} fact_flag names unknown flag `{flag}`")
         return
     if kind == "always":
-        list_params = ("hosts", "host_suffixes", "path_globs", "methods", "tokens")
-        if any(p.get(param, []) for param in list_params) or "threshold" in p or "flag" in p:
-            raise ValueError(f"{owner} always carries parameters")
+        _reject_unexpected_predicate_params(owner, p, set())
+        return
 
 
 def _reject_unexpected_predicate_params(owner: str, p: dict, allowed: set[str]) -> None:
-    for field in ("hosts", "host_suffixes", "path_globs", "methods", "tokens"):
-        if field not in allowed and p.get(field, []):
-            raise ValueError(f"{owner} {p.get('kind')} has unexpected `{field}` parameter")
-    for field in ("threshold", "flag"):
-        if field not in allowed and field in p:
-            raise ValueError(f"{owner} {p.get('kind')} has unexpected `{field}` parameter")
+    allowed_fields = {"kind"} | set(allowed)
+    unexpected = sorted(set(p) - allowed_fields)
+    if unexpected:
+        raise ValueError(
+            f"{owner} {p.get('kind')} has unexpected parameter(s): {', '.join(unexpected)}"
+        )
 
 
 def _require_nonempty_strings(owner: str, field: str, values: list) -> None:
+    if not isinstance(values, list):
+        raise ValueError(f"{owner} {field} must be an array")
     for value in values:
         if not isinstance(value, str):
             raise ValueError(f"{owner} {field} contains non-string value {value!r}")

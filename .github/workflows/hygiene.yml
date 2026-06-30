@@ -59,6 +59,15 @@ jobs:
           gate "vulture (DEAD-CODE)" uvx vulture verifier --min-confidence 80
           gate "pyright (TYPES, strict)" uvx --with-requirements verifier/requirements.txt pyright verifier
           exit "$failed"
+      - name: Reference verifier conformance (blocking)
+        run: |
+          set -euo pipefail
+          uv venv --clear .venv
+          uv pip install --python .venv/bin/python -r verifier/requirements.txt pytest
+          . .venv/bin/activate
+          python verifier/run_vectors.py
+          python verifier/conformance_check.py
+          python -m pytest vectors/test_attested_rail.py verifier/test_taxonomy_registry.py
       - name: deptry (DEPS) — DEFERRED
         run: |
           cat <<'EOF' >> "$GITHUB_STEP_SUMMARY"
