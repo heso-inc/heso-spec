@@ -11,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import heso_verify as hv  # noqa: E402
 
-
 TAXONOMY = """
 [[class]]
 id = "payment_endpoint"

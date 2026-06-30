@@ -888,7 +888,9 @@ def _active_extension_entries(toml_path: str) -> list[dict]:
         if ns not in namespaces:
             raise ValueError(f"extension `{extension_id}` uses unregistered namespace `{ns}`")
         if entry.get("kind") != "extend":
-            raise ValueError(f"extension `{extension_id}` has unsupported kind `{entry.get('kind')}`")
+            raise ValueError(
+                f"extension `{extension_id}` has unsupported kind `{entry.get('kind')}`"
+            )
         status = entry.get("status")
         if status == "deprecated":
             continue
@@ -916,7 +918,8 @@ def _load_extension_manifest(toml_path: str, entry: dict) -> dict:
     extension_id = entry["id"]
     if manifest.get("id") != extension_id:
         raise ValueError(
-            f"extension manifest `{path}` id `{manifest.get('id')}` does not match registry `{extension_id}`"
+            f"extension manifest `{path}` id `{manifest.get('id')}` "
+            f"does not match registry `{extension_id}`"
         )
     for key in ("version", "status", "target_class", "primitive", "predicate"):
         if key not in manifest:
@@ -924,9 +927,13 @@ def _load_extension_manifest(toml_path: str, entry: dict) -> dict:
     if manifest["status"] != entry["status"]:
         raise ValueError(f"extension `{extension_id}` status differs between registry and manifest")
     if manifest["target_class"] != entry["target_class"]:
-        raise ValueError(f"extension `{extension_id}` target_class differs between registry and manifest")
+        raise ValueError(
+            f"extension `{extension_id}` target_class differs between registry and manifest"
+        )
     if manifest["primitive"] != entry["primitive"]:
-        raise ValueError(f"extension `{extension_id}` primitive differs between registry and manifest")
+        raise ValueError(
+            f"extension `{extension_id}` primitive differs between registry and manifest"
+        )
     for pred in manifest.get("predicate", []):
         _validate_taxonomy_predicate(f"extension `{extension_id}`", pred)
         if pred.get("kind") == "always":
@@ -936,7 +943,9 @@ def _load_extension_manifest(toml_path: str, entry: dict) -> dict:
 
 def taxonomy_extensions(toml_path: str) -> list[dict]:
     """Load active registry extension manifests in deterministic registry order."""
-    return [_load_extension_manifest(toml_path, entry) for entry in _active_extension_entries(toml_path)]
+    return [
+        _load_extension_manifest(toml_path, entry) for entry in _active_extension_entries(toml_path)
+    ]
 
 
 def load_taxonomy(toml_path: str) -> list:
@@ -947,7 +956,9 @@ def load_taxonomy(toml_path: str) -> list:
     without becoming part of the spine itself.
     """
     data = _load_toml(toml_path)
-    classes = [{**cls, "predicate": list(cls.get("predicate", []))} for cls in data.get("class", [])]
+    classes = [
+        {**cls, "predicate": list(cls.get("predicate", []))} for cls in data.get("class", [])
+    ]
     classes_by_id = {cls["id"]: cls for cls in classes}
     for cls in classes:
         for pred in cls.get("predicate", []):
@@ -1008,9 +1019,7 @@ _EXTENSION_ID_RE = re.compile(r"^[a-z][a-z0-9-]*/[a-z][a-z0-9-]*$")
 
 def _split_extension_id(extension_id: object) -> tuple[str, str]:
     if not isinstance(extension_id, str) or not _EXTENSION_ID_RE.fullmatch(extension_id):
-        raise ValueError(
-            f"extension id `{extension_id}` must be `<ns>/<lower-kebab-name>`"
-        )
+        raise ValueError(f"extension id `{extension_id}` must be `<ns>/<lower-kebab-name>`")
     ns, name = extension_id.split("/", 1)
     return ns, name
 
@@ -1036,9 +1045,7 @@ def _validate_vector_ref(toml_path: str, extension_id: str, vectors: object) -> 
         raise ValueError(f"extension `{extension_id}` is missing classify vectors")
     rel, sep, fragment = vectors.partition("#")
     if sep != "#" or fragment != "taxonomy_classify":
-        raise ValueError(
-            f"extension `{extension_id}` vectors must point to `#taxonomy_classify`"
-        )
+        raise ValueError(f"extension `{extension_id}` vectors must point to `#taxonomy_classify`")
     if os.path.isabs(rel) or rel.startswith("../") or "/../" in rel:
         raise ValueError(f"extension `{extension_id}` vectors path escapes the bundle")
     if not rel.startswith("vectors/"):
