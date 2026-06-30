@@ -1213,6 +1213,32 @@
         "id": "TX-EXT-MODEL-HOST"
       },
       {
+        "desc": "Gemini API is a precise model-provider host, not a broad googleapis wildcard",
+        "expected_class": "model_endpoint",
+        "expected_effect": "observe",
+        "expected_outcome": "observe",
+        "expected_primitive": "execute",
+        "expected_verb": "llm_call",
+        "facts": {
+          "host": "generativelanguage.googleapis.com"
+        },
+        "id": "TX-EXT-GEMINI-HOST"
+      },
+      {
+        "desc": "generic Google APIs must not be swept into model_endpoint by host suffix",
+        "expected_class": "generic_network",
+        "expected_effect": "transfer_out",
+        "expected_outcome": "destructive",
+        "expected_primitive": "execute",
+        "expected_verb": "http_request",
+        "facts": {
+          "host": "storage.googleapis.com",
+          "method": "GET",
+          "path": "/bucket/object"
+        },
+        "id": "TX-GOOGLE-STORAGE-NOT-MODEL"
+      },
+      {
         "desc": "well-known messaging host comes from the heso/messaging-providers extension pack",
         "expected_class": "messaging_endpoint",
         "expected_effect": "transfer_out",
@@ -1228,7 +1254,7 @@
     "provenance": "rust-reference",
     "regenerated_by": "heso-conformance classify (heso_engine::classify spine)",
     "source": "taxonomy.toml + registry.toml + taxonomy/extensions/heso/*.toml",
-    "taxonomy_hash": "ca210dacc5380f5d48cda60f91d79a2d8775638fe78f0a568fd3136b4f6b0408",
+    "taxonomy_hash": "7e4ff89dc8efa5447c4d08282bb92952d6256a391b8f9844478839ed04ff63a1",
     "taxonomy_hash_rule": "BLAKE3(RFC8785-JCS(normative_projection(taxonomy.toml + active registry extensions)))"
   },
   "time_anchor": {

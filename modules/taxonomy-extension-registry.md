@@ -51,7 +51,8 @@ vocabulary, mapping to the same five primitives.
   (deny-unknown applies to names, not just actions).
 - Every extension id MUST be `<ns>/<name>` where `<ns>` is an **allocated**
   namespace recorded in [`../registry.toml`](../registry.toml) and `<name>` is a
-  lower-kebab token unique within that namespace.
+  lower-kebab token unique within that namespace. Both tokens MUST match
+  `[a-z][a-z0-9-]*`.
 - A namespace is allocated to **exactly one owner**, first-come, recorded once,
   and **never reassigned** (append-only).
 
@@ -100,16 +101,20 @@ not a private edit to a vendored copy. The steps, per
    [`../registry.toml`](../registry.toml) with `ns`, `owner`, `contact`,
    `registered`, and an optional `homepage`. If your namespace already exists, skip
    this step.
-2. **Define the `extend` manifest** under `taxonomy/extensions/<ns>/`, mapped to
-   exactly one target class and that class's primitive (§3).
+2. **Define the `extend` manifest** at
+   `taxonomy/extensions/<ns>/<name>.toml`, mapped to exactly one target class and
+   that class's primitive (§3). Registry loaders MUST reject absolute paths,
+   path traversal, mismatched namespace directories, and mismatched manifest
+   filenames.
 3. **Add a `[[extension]]` entry** to [`../registry.toml`](../registry.toml) with
    `id`, `kind`, `target_class`, `primitive`, `manifest`, `summary`, `vectors`,
    `status = "active"`, and `registered`.
 4. **Ship classify vectors.** Add a `taxonomy-classify` golden set covering the
    extension (input facts → expected target class + primitive + `taxonomy_hash`),
    generated from the reference — **never hand-written**. The
-   `vectors` field MUST point at them. An extension with no published classify
-   vectors is **NOT conformant** and MUST NOT be merged.
+   `vectors` field MUST point at them with a `#taxonomy_classify` fragment under
+   `vectors/`. An extension with no published classify vectors is **NOT
+   conformant** and MUST NOT be merged.
 5. **Prove the second implementation agrees.** The clean-room verifier must
    classify the extension's vectors identically. Extend it in the same PR if
    needed.

@@ -1,6 +1,6 @@
-# HESO/1 — Destructive-Primitive Taxonomy
+# HESO/1.1.0 — Destructive-Primitive Taxonomy
 
-**Status: Normative** · Module: `taxonomy` · HESO/1
+**Status: Normative** · Module: `taxonomy` · HESO/1.1.0
 
 > The canonical, deterministic, **structural** classification of what an agent
 > action does to the world. `classify` is a **total** function over a **closed**
@@ -362,7 +362,8 @@ hard-coded branches in the classifier.
   (deny-unknown applies to *names* too).
 - An extension `id` MUST be namespaced `<ns>/<name>` (e.g.
   `acme/internal-ledger`, `myco/pii-egress`). `<ns>` is the registered namespace;
-  `<name>` is the extension-local manifest name.
+  `<name>` is the extension-local manifest name. Both tokens MUST be lower-kebab
+  (`[a-z][a-z0-9-]*`).
 - HESO/1.1.0 registry entries support `kind = "extend"` only. An extension
   manifest MUST target one existing core class and MUST map to that class's
   primitive. Extensions add resolution detail; they MUST NOT invent a sixth
