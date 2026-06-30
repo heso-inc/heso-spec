@@ -14,7 +14,7 @@ spec, anyone can decide offline whether the receipt is valid — no network, no
 clock, no trust beyond the public keys, and without any HESO source. The Rust
 reference implementation is `heso-action` (`receipt.rs`, `verify.rs`); the
 clean-room second implementation is the open verifier (see
-[conformance-and-envelope](../../redesign/standard/conformance-and-envelope.md)).
+[`../verifier/heso_verify.py`](../verifier/heso_verify.py)).
 
 This module is the **spine** that the sibling modules attach to:
 
@@ -24,8 +24,8 @@ This module is the **spine** that the sibling modules attach to:
   on the receipt).
 - [`time-anchor.md`](./time-anchor.md) — the RFC-3161 trusted-time anchor.
 - [`quorum.md`](./quorum.md) — k-of-n (L1-quorum) co-signature.
-- [`envelope.md`](../../redesign/standard/conformance-and-envelope.md) — the
-  in-toto Statement + DSSE binding that wraps the receipt.
+- [`envelope.md`](./envelope.md) — the in-toto Statement + DSSE binding that
+  wraps the receipt.
 
 Conformance is claimable **per module**: an implementation MAY conform to
 `action-receipt` (this module) without claiming `chain`, `time-anchor`, or
@@ -74,8 +74,7 @@ the old v1 body *except* for the two tags above.
 
 **Version pinning.** Where a receipt's classification depends on the taxonomy, it
 pins the `taxonomy_hash` it was classified under (§3.4, ERT), and a verifier MUST
-check against that pinned version, never the latest — see ADR
-[0012](../../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md).
+check against that pinned version, never the latest.
 
 **v1 frozen suite.** Changing the canonicalization, the hash, OR the signature
 scheme requires a **new `alg` tag** — never a silent change under an existing tag.
@@ -167,7 +166,7 @@ the reserved-absent groups change the golden when absent.
 
 | Field | Meaning |
 |---|---|
-| `verb` | The **authoritative** coarse lane, one of the FROZEN-7: `payment`, `delete`, `account_change`, `data_export`, `llm_call`, `http_request`, `tool_call`. Every allow/deny, trust-level, and routing decision keys on `verb`. The FROZEN-7 map onto the 5 destructive primitives (move-value / destroy / change-authority / disclose / execute) per the taxonomy spine — see ADR [0001](../../redesign/decisions/0001-taxonomy-spine.md) and [taxonomy](../../redesign/standard/taxonomy.md). |
+| `verb` | The signed coarse lane, one of the FROZEN-7: `payment`, `delete`, `account_change`, `data_export`, `llm_call`, `http_request`, `tool_call`. For no-ERT receipts this is the lane policy keys on. For ERT receipts, a re-deriving verifier checks that `classify(observed_facts, taxonomy@taxonomy_hash)` produces a class whose coarse verb matches this value. The FROZEN-7 map onto the five destructive primitives per [`taxonomy.md`](./taxonomy.md). |
 | `tool_name` | The invoked tool/function identifier. |
 | `target_host` | The action's target host, when applicable. Omitted when absent. |
 | `workflow` / `account` | The workflow and account the action ran under. |
@@ -199,7 +198,7 @@ body minted before the fields existed.
 
 | Field | Type | Verifier behavior |
 |---|---|---|
-| `action.ert` | `Ert?` | The signed Effected-Resource Tuple: the structural `observed_facts`, the pinned `taxonomy_hash`, and the derived `(resource_class, effect, egress)`. **Re-derivable**: a re-deriving verifier replays `classify(observed_facts, taxonomy@taxonomy_hash)` and FAILS CLOSED with `ClassificationMismatch` when the signed class ≠ the re-derived one (or the class's coarse verb ≠ the receipt's `verb`), or `TaxonomyUnavailable` when it does not embed the pinned taxonomy. A plain (non-re-deriving) `open_receipt` does NOT re-derive — a no-ERT receipt is unaffected. The pinned `taxonomy_hash` is the version anchor per ADR [0012](../../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md). |
+| `action.ert` | `Ert?` | The signed Effected-Resource Tuple: the structural `observed_facts`, the pinned `taxonomy_hash`, and the derived `(resource_class, effect, egress)`. **Re-derivable**: a re-deriving verifier replays `classify(observed_facts, taxonomy_bundle@taxonomy_hash)` and FAILS CLOSED with `ClassificationMismatch` when the signed class does not match the re-derived one, or the class's coarse verb does not match the receipt's `verb`. It fails with `TaxonomyUnavailable` when it does not have the exact pinned taxonomy bundle. A plain non-re-deriving `open_receipt` does not re-derive; a no-ERT receipt is unaffected. |
 | `action.mandate` | `MandateBinding?` | The payment mandate facts bound to the action (id, integrity hash, `mandate_status`, authorized payee/amount/currency). On a `payment` receipt whose bound `mandate_status` is `Invalid`/`Absent`, `open_receipt` FAILS CLOSED with `MandateRejected`. A payment with NO binding is left to the policy floor at gate time, not failed here; a non-payment receipt is unaffected. |
 
 ---
@@ -410,7 +409,7 @@ Pinned by `golden_zero_seed_domain_action_receipt_is_byte_stable` in
 
 (The chain-link golden lives in [`chain.md`](./chain.md); the v1 golden in
 [`action-receipt-v1.md`](./action-receipt-v1.md); the DSSE/PAE golden in
-[conformance-and-envelope](../../redesign/standard/conformance-and-envelope.md).)
+the `dsse-pae` conformance vectors.)
 
 ---
 

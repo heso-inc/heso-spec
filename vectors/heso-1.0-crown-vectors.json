@@ -969,11 +969,12 @@
   },
   "spec": "HESO/1",
   "taxonomy_classify": {
-    "absent_row_count_semantics": "absent row_count_estimate is NO-match for row_threshold (kernel + clean-room aligned); fail-safe needs a paired observed fact (deferred)",
+    "absent_row_count_semantics": "absent row_count_estimate is NO-match for row_threshold; observed unknown row count is row_count_unknown=true and fails safe to bulk_data",
     "cases": [
       {
         "expected_class": "payment_endpoint",
         "expected_effect": "spend",
+        "expected_outcome": "destructive",
         "expected_primitive": "move-value",
         "expected_verb": "payment",
         "facts": {
@@ -986,6 +987,7 @@
       {
         "expected_class": "payment_endpoint",
         "expected_effect": "spend",
+        "expected_outcome": "destructive",
         "expected_primitive": "move-value",
         "expected_verb": "payment",
         "facts": {
@@ -998,6 +1000,7 @@
       {
         "expected_class": "destructive_op",
         "expected_effect": "destroy",
+        "expected_outcome": "destructive",
         "expected_primitive": "destroy",
         "expected_verb": "delete",
         "facts": {
@@ -1010,6 +1013,7 @@
       {
         "expected_class": "destructive_op",
         "expected_effect": "destroy",
+        "expected_outcome": "destructive",
         "expected_primitive": "destroy",
         "expected_verb": "delete",
         "facts": {
@@ -1026,6 +1030,7 @@
       {
         "expected_class": "identity_endpoint",
         "expected_effect": "grant",
+        "expected_outcome": "destructive",
         "expected_primitive": "change-authority",
         "expected_verb": "account_change",
         "facts": {
@@ -1038,6 +1043,7 @@
       {
         "expected_class": "secret_store",
         "expected_effect": "transfer_out",
+        "expected_outcome": "destructive",
         "expected_primitive": "disclose",
         "expected_verb": "data_export",
         "facts": {
@@ -1050,6 +1056,7 @@
       {
         "expected_class": "secret_store",
         "expected_effect": "transfer_out",
+        "expected_outcome": "destructive",
         "expected_primitive": "disclose",
         "expected_verb": "data_export",
         "facts": {
@@ -1061,6 +1068,7 @@
       {
         "expected_class": "bulk_data",
         "expected_effect": "transfer_out",
+        "expected_outcome": "destructive",
         "expected_primitive": "disclose",
         "expected_verb": "data_export",
         "facts": {
@@ -1070,8 +1078,22 @@
         "id": "TX-BULK"
       },
       {
+        "desc": "observed but indeterminate row count fails safe into bulk_data",
+        "expected_class": "bulk_data",
+        "expected_effect": "transfer_out",
+        "expected_outcome": "destructive",
+        "expected_primitive": "disclose",
+        "expected_verb": "data_export",
+        "facts": {
+          "host": "db.example.com",
+          "row_count_unknown": true
+        },
+        "id": "TX-BULK-UNKNOWN-COUNT"
+      },
+      {
         "expected_class": "model_endpoint",
         "expected_effect": "observe",
+        "expected_outcome": "observe",
         "expected_primitive": "execute",
         "expected_verb": "llm_call",
         "facts": {
@@ -1084,6 +1106,7 @@
       {
         "expected_class": "messaging_endpoint",
         "expected_effect": "transfer_out",
+        "expected_outcome": "destructive",
         "expected_primitive": "execute",
         "expected_verb": "http_request",
         "facts": {
@@ -1096,6 +1119,7 @@
       {
         "expected_class": "generic_network",
         "expected_effect": "transfer_out",
+        "expected_outcome": "destructive",
         "expected_primitive": "execute",
         "expected_verb": "http_request",
         "facts": {
@@ -1108,6 +1132,7 @@
       {
         "expected_class": "local_compute",
         "expected_effect": "mutate",
+        "expected_outcome": "destructive",
         "expected_primitive": "execute",
         "expected_verb": "tool_call",
         "facts": {
@@ -1119,6 +1144,7 @@
         "deny_unknown": true,
         "expected_class": "unresolved",
         "expected_effect": "effect_unknown",
+        "expected_outcome": "residual",
         "expected_primitive": "execute",
         "expected_verb": "tool_call",
         "facts": {},
@@ -1128,6 +1154,7 @@
         "desc": "a payment host that is also a network reach classifies as payment (priority)",
         "expected_class": "payment_endpoint",
         "expected_effect": "spend",
+        "expected_outcome": "destructive",
         "expected_primitive": "move-value",
         "expected_verb": "payment",
         "facts": {
@@ -1136,13 +1163,73 @@
           "path": "/v1/charges"
         },
         "id": "TX-PRIORITY-PAYMENT-BEATS-NETWORK"
+      },
+      {
+        "desc": "well-known payment host comes from the heso/payment-providers extension pack",
+        "expected_class": "payment_endpoint",
+        "expected_effect": "spend",
+        "expected_outcome": "destructive",
+        "expected_primitive": "move-value",
+        "expected_verb": "payment",
+        "facts": {
+          "host": "api.adyen.com"
+        },
+        "id": "TX-EXT-PAYMENT-HOST"
+      },
+      {
+        "desc": "well-known identity host comes from the heso/identity-providers extension pack",
+        "expected_class": "identity_endpoint",
+        "expected_effect": "grant",
+        "expected_outcome": "destructive",
+        "expected_primitive": "change-authority",
+        "expected_verb": "account_change",
+        "facts": {
+          "host": "acme.okta.com"
+        },
+        "id": "TX-EXT-IDENTITY-HOST"
+      },
+      {
+        "desc": "well-known secret host comes from the heso/secret-stores extension pack",
+        "expected_class": "secret_store",
+        "expected_effect": "transfer_out",
+        "expected_outcome": "destructive",
+        "expected_primitive": "disclose",
+        "expected_verb": "data_export",
+        "facts": {
+          "host": "abc.secretsmanager.amazonaws.com"
+        },
+        "id": "TX-EXT-SECRET-HOST"
+      },
+      {
+        "desc": "well-known model host comes from the heso/model-providers extension pack",
+        "expected_class": "model_endpoint",
+        "expected_effect": "observe",
+        "expected_outcome": "observe",
+        "expected_primitive": "execute",
+        "expected_verb": "llm_call",
+        "facts": {
+          "host": "api.anthropic.com"
+        },
+        "id": "TX-EXT-MODEL-HOST"
+      },
+      {
+        "desc": "well-known messaging host comes from the heso/messaging-providers extension pack",
+        "expected_class": "messaging_endpoint",
+        "expected_effect": "transfer_out",
+        "expected_outcome": "destructive",
+        "expected_primitive": "execute",
+        "expected_verb": "http_request",
+        "facts": {
+          "host": "hooks.slack.com"
+        },
+        "id": "TX-EXT-MESSAGING-HOST"
       }
     ],
     "provenance": "rust-reference",
     "regenerated_by": "heso-conformance classify (heso_engine::classify spine)",
-    "source": "taxonomy.toml + ADR-0001 (decisions/0001-taxonomy-spine.md)",
-    "taxonomy_hash": "9f3bbaafbef92384427a25e7e7004f7a73d30faba68f183a82102b8e92f3d20b",
-    "taxonomy_hash_rule": "BLAKE3(RFC8785-JCS(normative_projection(taxonomy.toml)))"
+    "source": "taxonomy.toml + registry.toml + taxonomy/extensions/heso/*.toml",
+    "taxonomy_hash": "ca210dacc5380f5d48cda60f91d79a2d8775638fe78f0a568fd3136b4f6b0408",
+    "taxonomy_hash_rule": "BLAKE3(RFC8785-JCS(normative_projection(taxonomy.toml + active registry extensions)))"
   },
   "time_anchor": {
     "anchored_content_hash": "988baa2e41ab2046d86cd90eb2115afc795ef15855332bd683e3d4d7e248dc8d",

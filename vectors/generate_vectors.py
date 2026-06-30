@@ -655,6 +655,15 @@ def main() -> int:
             "expected_effect": "transfer_out",
         },
         {
+            "id": "TX-BULK-UNKNOWN-COUNT",
+            "desc": "observed but indeterminate row count fails safe into bulk_data",
+            "facts": {"host": "db.example.com", "row_count_unknown": True},
+            "expected_class": "bulk_data",
+            "expected_verb": "data_export",
+            "expected_primitive": "disclose",
+            "expected_effect": "transfer_out",
+        },
+        {
             "id": "TX-MODEL",
             "facts": {"host": "api.openai.com", "method": "POST", "path": "/v1/chat/completions"},
             "expected_class": "model_endpoint",
@@ -708,7 +717,61 @@ def main() -> int:
             "expected_primitive": "move-value",
             "expected_effect": "spend",
         },
+        {
+            "id": "TX-EXT-PAYMENT-HOST",
+            "desc": "well-known payment host comes from the heso/payment-providers extension pack",
+            "facts": {"host": "api.adyen.com"},
+            "expected_class": "payment_endpoint",
+            "expected_verb": "payment",
+            "expected_primitive": "move-value",
+            "expected_effect": "spend",
+        },
+        {
+            "id": "TX-EXT-IDENTITY-HOST",
+            "desc": "well-known identity host comes from the heso/identity-providers extension pack",
+            "facts": {"host": "acme.okta.com"},
+            "expected_class": "identity_endpoint",
+            "expected_verb": "account_change",
+            "expected_primitive": "change-authority",
+            "expected_effect": "grant",
+        },
+        {
+            "id": "TX-EXT-SECRET-HOST",
+            "desc": "well-known secret host comes from the heso/secret-stores extension pack",
+            "facts": {"host": "abc.secretsmanager.amazonaws.com"},
+            "expected_class": "secret_store",
+            "expected_verb": "data_export",
+            "expected_primitive": "disclose",
+            "expected_effect": "transfer_out",
+        },
+        {
+            "id": "TX-EXT-MODEL-HOST",
+            "desc": "well-known model host comes from the heso/model-providers extension pack",
+            "facts": {"host": "api.anthropic.com"},
+            "expected_class": "model_endpoint",
+            "expected_verb": "llm_call",
+            "expected_primitive": "execute",
+            "expected_effect": "observe",
+        },
+        {
+            "id": "TX-EXT-MESSAGING-HOST",
+            "desc": "well-known messaging host comes from the heso/messaging-providers extension pack",
+            "facts": {"host": "hooks.slack.com"},
+            "expected_class": "messaging_endpoint",
+            "expected_verb": "http_request",
+            "expected_primitive": "execute",
+            "expected_effect": "transfer_out",
+        },
     ]
+    for case in classify_cases:
+        if "expected_outcome" in case:
+            continue
+        if case.get("deny_unknown"):
+            case["expected_outcome"] = "residual"
+        elif case["expected_effect"] == "observe":
+            case["expected_outcome"] = "observe"
+        else:
+            case["expected_outcome"] = "destructive"
     # Regenerate (class, verb, primitive, effect) from the RUST kernel classify
     # spine when the runnable is present, and assert byte-equality with the
     # spec-derived expectation. This is the P2 cross-language gate: the Rust spine,
@@ -735,7 +798,8 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    # taxonomy_hash: the single BLAKE3(JCS(normative projection)) of taxonomy.toml.
+    # taxonomy_hash: the single BLAKE3(JCS(normative projection)) of the taxonomy
+    # bundle: core taxonomy.toml plus active registry extension manifests.
     # MINT it from the Rust kernel and assert the clean-room Python recompute (the
     # SAME projection the verifier checks) reproduces it byte-for-byte. The kernel
     # value is the golden; Python is the independent reproduction that must MATCH.
@@ -752,23 +816,21 @@ def main() -> int:
 
     vectors["taxonomy_classify"] = {
         "taxonomy_hash": taxonomy_hash_value,
-        "taxonomy_hash_rule": "BLAKE3(RFC8785-JCS(normative_projection(taxonomy.toml)))",
+        "taxonomy_hash_rule": (
+            "BLAKE3(RFC8785-JCS(normative_projection(taxonomy.toml + active registry extensions)))"
+        ),
         "provenance": taxonomy_provenance,
-        "source": "taxonomy.toml + ADR-0001 (decisions/0001-taxonomy-spine.md)",
+        "source": "taxonomy.toml + registry.toml + taxonomy/extensions/heso/*.toml",
         "regenerated_by": "heso-conformance classify (heso_engine::classify spine)",
         # The absent-row_count_estimate fail-safe nuance: both the kernel
         # (heso_engine::classify predicate_matches) and the clean-room Python
         # classifier treat an ABSENT row_count as NO-match for the bulk_data
-        # row_threshold predicate — they are ALIGNED. taxonomy.toml's "UNKNOWN fails
-        # SAFE" applies to a row-bearing read whose count is indeterminate, which
-        # needs a paired observed fact (a deferred classify refinement); it does NOT
-        # mean every estimate-less event is swept into data_export. The kernel does
-        # NOT fail-safe on a bare absent count by design (see the predicate_matches
-        # doc comment), so this vector pins the as-shipped aligned behavior — no
-        # behavior was silently changed.
+        # row_threshold predicate. An observed but indeterminate row count MUST be
+        # represented by the signed row_count_unknown fact, which classifies as
+        # bulk_data and is pinned by TX-BULK-UNKNOWN-COUNT.
         "absent_row_count_semantics": (
-            "absent row_count_estimate is NO-match for row_threshold (kernel + "
-            "clean-room aligned); fail-safe needs a paired observed fact (deferred)"
+            "absent row_count_estimate is NO-match for row_threshold; observed "
+            "unknown row count is row_count_unknown=true and fails safe to bulk_data"
         ),
         "cases": classify_cases,
     }

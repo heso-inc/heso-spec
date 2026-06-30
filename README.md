@@ -20,7 +20,7 @@ transparency" without claiming time-anchor or quorum.
 
 | Module | File | What it is |
 |---|---|---|
-| **taxonomy** | [`modules/taxonomy.md`](./modules/taxonomy.md) + [`taxonomy.toml`](./taxonomy.toml) | The crown jewel: the structural, classify-by-effect destructive-primitive taxonomy (`move-value` / `destroy` / `change-authority` / `disclose` / `execute`), hashed and versioned. |
+| **taxonomy** | [`modules/taxonomy.md`](./modules/taxonomy.md) + [`taxonomy.toml`](./taxonomy.toml) + [`registry.toml`](./registry.toml) + [`taxonomy/extensions/`](./taxonomy/extensions/) | The crown jewel: the structural, classify-by-effect destructive-primitive taxonomy bundle (`move-value` / `destroy` / `change-authority` / `disclose` / `execute`), hashed and versioned. |
 | **action-receipt** | [`modules/action-receipt.md`](./modules/action-receipt.md) (+ [`action-receipt-v1.md`](./modules/action-receipt-v1.md)) | The signed, canonicalized record of one classified agent action. v2 default; v1 frozen for byte-stable legacy receipts. |
 | **chain** | [`modules/chain.md`](./modules/chain.md) | The BLAKE3 hash-linked per-session audit chain over receipts. |
 | **transparency** | [`modules/transparency.md`](./modules/transparency.md) | RFC-6962 Merkle inclusion + consistency proofs over receipt commitments. |
