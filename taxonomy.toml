@@ -16,11 +16,10 @@
 # the catalog pins the labels. Mirrors the existing controls.toml / catalog.toml
 # two-file, embedded-via-include_str!, fail-closed-parse precedent.
 #
-# THE THESIS (from .agents/classification-definitive.md §3a): classify an action
-# by the RESOURCE it structurally touches + its EFFECT, decided by a PURE
-# function over signed observed facts × this hashed taxonomy × a hashed policy —
-# NEVER by tool names or per-tool declarations. The same model that makes AWS
-# IAM / Cedar / VPC-SC complete + deterministic.
+# THE THESIS: classify an action by the RESOURCE it structurally touches + its
+# EFFECT, decided by a PURE function over signed observed facts × this hashed
+# taxonomy × a hashed policy — NEVER by tool names or per-tool declarations.
+# The same model that makes AWS IAM / Cedar / VPC-SC complete + deterministic.
 #
 # ORDER IS SEMANTIC. Classes are listed in PRIORITY order: the runtime evaluator
 # tries each `[[class]]` predicate top-to-bottom and the FIRST that matches wins
@@ -52,57 +51,40 @@
 #   method_set   — parsed HTTP method ∈ `methods`.
 #   argv_token   — a whole argv/SQL token ∈ `tokens` (token = a maximal
 #                  alphanumeric run; never an arbitrary substring).
-#   row_threshold— observed `row_count_estimate` ≥ `threshold` (or UNKNOWN, which
-#                  fails SAFE to the stricter lane).
+#   row_threshold— observed `row_count_estimate` ≥ `threshold`. An indeterminate
+#                  count is represented by the separate `row_count_unknown` fact.
 #   fact_flag    — a single signed boolean observed fact named by `flag` is true.
 #   always       — the unconditional residual (only the `unresolved` class).
 #
-# A class may carry SEVERAL predicate rows; they are OR-ed (any matches ⇒ the
-# class matches). This is how "host∈{stripe,…} OR payment-API path grammar OR
-# money+payee body ⇒ payment" is encoded as three predicate rows on one class.
+# A class may carry SEVERAL predicate rows; they are OR-ed (any matches => the
+# class matches). This is how "payment-API path grammar OR money+payee body =>
+# payment" is encoded on the core class. Well-known provider hosts live in
+# registry-governed extension manifests, not in this spine.
 #
 # Coarse-verb laxity lattice (strict → lax), used to reject a relabel that WIDENS:
 #   payment > delete > account_change > data_export > llm_call > http_request >
-#   tool_call. A customer override may only move a built-in DOWN-lattice is
-#   FORBIDDEN; it may keep the same verb or refuse. (Monotonic narrowing: never
-#   relabel a built-in to something laxer.)
+#   tool_call. A customer override may keep a built-in verb the same, but may
+#   never relabel it to something laxer. (Monotonic narrowing.)
 #
-# Customer extension is ADD-only + NAMESPACED + monotonic:
-#   * may ADD a new `[[class]]` (its id MUST be namespaced `<ns>/<name>`); a new
-#     class is inserted by priority just ABOVE `unresolved` (it can only NARROW
-#     the residual, never pre-empt a built-in dangerous lane).
-#   * may ADD members to a built-in class's predicate sets via `[[extend]]`
+# Registry extension is ADD-only + NAMESPACED + monotonic. HESO/1.1.0 supports
+# registered `extend` manifests only:
+#   * may ADD predicate rows to a built-in class
 #     (more hosts / suffixes / globs / tokens — strictly grows what is caught).
 #   * may NOT relabel a built-in class's coarse_verb to a laxer one, may NOT add
-#     an `unresolved`-laxing class, may NOT redefine a built-in id.
+#     an `unresolved`-laxing rule, may NOT redefine a built-in id.
 # The loader rejects any violation at load time (fail-closed).
 #
-# Generated from .agents/classification-definitive.md §3a. Pure data, NO crypto.
+# Pure data, NO crypto.
 # `taxonomy_hash` is a BLAKE3 over the RFC-8785 canonical projection of the
-# parsed+validated taxonomy (so it is insensitive to comment/whitespace/key-order
-# churn and stable for byte-for-byte replay).
+# parsed+validated taxonomy bundle (core taxonomy plus registered active
+# extension manifests) so it is insensitive to comment/whitespace/key-order churn
+# and stable for byte-for-byte replay.
 
 # 1. payment_endpoint — money movement. Beats everything (top of the ladder).
 [[class]]
 id = "payment_endpoint"
 coarse_verb = "payment"
 effect = "spend"
-
-  # Host membership: the shared payment-processor host set (classified ONCE, not
-  # per tool). A new unseen tool that POSTs to api.adyen.com is payment_endpoint
-  # by construction — nobody declared it.
-  [[class.predicate]]
-  kind = "host_set"
-  host_suffixes = [
-    ".stripe.com", ".adyen.com", ".braintreegateway.com", ".paypal.com",
-    ".squareup.com", ".checkout.com", ".razorpay.com", ".mollie.com",
-    ".wise.com", ".plaid.com", ".dwolla.com", ".gocardless.com",
-    ".payments.jpmorgan.com", ".coinbase.com",
-  ]
-  hosts = [
-    "api.stripe.com", "api.adyen.com", "api.paypal.com",
-    "api.payments.jpmorgan.com",
-  ]
 
   # Payment-API path grammar (anchored globs over the request path).
   [[class.predicate]]
@@ -150,16 +132,6 @@ id = "identity_endpoint"
 coarse_verb = "account_change"
 effect = "grant"
 
-  # Curated IAM/auth/SSO host grammar (shared across customers).
-  [[class.predicate]]
-  kind = "host_set"
-  host_suffixes = [
-    ".iam.amazonaws.com", ".sts.amazonaws.com", ".okta.com", ".auth0.com",
-    ".onelogin.com", ".pingidentity.com", ".login.microsoftonline.com",
-    ".accounts.google.com", ".admin.googleapis.com",
-  ]
-  hosts = ["iam.amazonaws.com", "sts.amazonaws.com"]
-
   # Permission/credential mutation path grammar.
   [[class.predicate]]
   kind = "path_glob"
@@ -178,15 +150,6 @@ effect = "grant"
 id = "secret_store"
 coarse_verb = "data_export"
 effect = "transfer_out"
-
-  # Secret-manager host grammar.
-  [[class.predicate]]
-  kind = "host_set"
-  host_suffixes = [
-    ".secretsmanager.amazonaws.com", ".vault.hashicorp.cloud",
-    ".secretmanager.googleapis.com", ".vault.azure.net",
-  ]
-  hosts = []
 
   # Secret-path patterns (anchored globs over the realpath / object key).
   [[class.predicate]]
@@ -208,27 +171,23 @@ id = "bulk_data"
 coarse_verb = "data_export"
 effect = "transfer_out"
 
-  # row_count_estimate ≥ threshold (UNKNOWN fails SAFE into this stricter lane).
+  # row_count_estimate >= threshold.
   [[class.predicate]]
   kind = "row_threshold"
   threshold = 1000
+
+  # A data operation whose row count was observed as relevant but indeterminate
+  # fails safe into the same disclosure lane. A missing row_count_estimate alone
+  # is not enough; producers set this signed fact when count is unknown.
+  [[class.predicate]]
+  kind = "fact_flag"
+  flag = "row_count_unknown"
 
 # 6. model_endpoint — inference-provider host / base_url (llm_call).
 [[class]]
 id = "model_endpoint"
 coarse_verb = "llm_call"
 effect = "observe"
-
-  # Inference-provider host grammar (shared).
-  [[class.predicate]]
-  kind = "host_set"
-  host_suffixes = [
-    ".openai.com", ".anthropic.com", ".googleapis.com", ".cohere.ai",
-    ".cohere.com", ".bedrock.amazonaws.com", ".mistral.ai",
-    ".together.xyz", ".groq.com", ".perplexity.ai",
-    ".openai.azure.com", ".cognitiveservices.azure.com",
-  ]
-  hosts = ["api.openai.com", "api.anthropic.com"]
 
   # Inference path grammar.
   [[class.predicate]]
@@ -248,15 +207,6 @@ effect = "observe"
 id = "messaging_endpoint"
 coarse_verb = "http_request"
 effect = "transfer_out"
-
-  [[class.predicate]]
-  kind = "host_set"
-  host_suffixes = [
-    ".slack.com", ".sendgrid.net", ".twilio.com", ".mailgun.net",
-    ".postmarkapp.com", ".graph.microsoft.com", ".discord.com",
-    ".telegram.org",
-  ]
-  hosts = ["slack.com", "discord.com"]
 
   [[class.predicate]]
   kind = "path_glob"

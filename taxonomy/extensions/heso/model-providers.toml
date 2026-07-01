@@ -1,0 +1,19 @@
+# heso/model-providers — first-party model provider host facts.
+
+id = "heso/model-providers"
+version = 1
+status = "active"
+target_class = "model_endpoint"
+primitive = "execute"
+summary = "Well-known model provider hosts that structurally indicate inference calls."
+registered = "2026-06-30"
+
+[[predicate]]
+kind = "host_set"
+host_suffixes = [
+  ".openai.com", ".anthropic.com", ".cohere.ai",
+  ".cohere.com", ".bedrock.amazonaws.com", ".mistral.ai",
+  ".together.xyz", ".groq.com", ".perplexity.ai",
+  ".openai.azure.com", ".cognitiveservices.azure.com",
+]
+hosts = ["api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com"]

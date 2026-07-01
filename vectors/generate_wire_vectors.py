@@ -45,7 +45,7 @@ computed with the EXACT kernel primitives (mirrored from generate_vectors.py):
   - chain_head    = BLAKE3(domain || len-prefixed session/seq/action_hash) [chain.rs]
   - commitment    = BLAKE3(salt ++ field_path ++ value_json)    [redact.rs]
   - signer_fpr    = BLAKE3(raw ed25519 public key bytes)        [commitment-store §3.1]
-  - taxonomy_hash = BLAKE3(JCS(taxonomy descriptor))            [ADR-0012 pin-at-signing]
+  - taxonomy_hash = BLAKE3(JCS(taxonomy bundle projection))     [taxonomy.md]
 
 The Rust verify-cli path runs when ``HESO_VERIFY_CLI`` (or the sibling enterprise
 target dir) points at the built binary; without it the source receipts are still
@@ -66,6 +66,13 @@ from blake3 import blake3
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT_PATH = os.path.join(REPO, "vectors", "heso-1.0-wire-vectors.json")
+TAXONOMY_PATH = os.path.join(REPO, "taxonomy.toml")
+
+sys.path.insert(0, os.path.join(REPO, "verifier"))
+from heso_verify import taxonomy_hash as clean_taxonomy_hash  # noqa: E402
+
 # ── Frozen constants (mirrored from heso-action/src/domain.rs) ──────────────
 ACTION_SIGNING_DOMAIN = b"heso-action/v1\x00"
 RECEIPT_CHAIN_DOMAIN = b"heso-rcpt-chain/v1\x00"
@@ -83,16 +90,6 @@ ZERO_SEED_PUBKEY = "O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik="
 COMMITMENT_WIRE_VERSION = "heso-commitment/v1"
 COMMITMENT_ENVELOPE_KIND = "dsse"  # in-toto Statement + DSSE (ADR-0009)
 
-# The taxonomy version pinned at signing (ADR-0012). A small structural
-# descriptor; its BLAKE3 over JCS is the taxonomy_hash the commitment carries so a
-# relying party knows WHICH taxonomy classified the action.
-TAXONOMY_DESCRIPTOR = {"spec": "HESO/1", "spine": "ADR-0001", "frozen_verbs": 7}
-
-# The Phase-1 shipped taxonomy_hash (BLAKE3 of the embedded taxonomy projection) —
-# the value the ERT-present commitment golden's `taxonomy_hash` field carries. Pinned
-# IDENTICALLY in heso-action ``fixtures::SHIPPED_TAXONOMY_HASH``.
-SHIPPED_TAXONOMY_HASH = "9f3bbaafbef92384427a25e7e7004f7a73d30faba68f183a82102b8e92f3d20b"
-
 # The all-zero-seed operator's commitment fingerprint = blake3(raw pubkey), 64-hex.
 # NOT the heso:-prefixed Grade-0 signer_fingerprint. Pinned in heso-action
 # ``commitment::tests::ZERO_SEED_COMMITMENT_FPR``.
@@ -106,10 +103,6 @@ STANDALONE_L0_GOLDEN_ACTION_HASH = (
 STANDALONE_L0_GOLDEN_OPERATOR_SIG = (
     "ujGbJO2VR2PpaguiG3NegMWAyQLWJlgAVxuKnwaeV8KsMbtT4K/f8lGhLrNI3NSxbIXQnwZGCS1b4BtXnRMQAQ=="
 )
-
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT_PATH = os.path.join(REPO, "vectors", "heso-1.0-wire-vectors.json")
-
 
 def _b64(b: bytes) -> str:
     return base64.b64encode(b).decode()
@@ -186,7 +179,7 @@ def signer_fpr(sk: Ed25519PrivateKey) -> str:
 
 
 def taxonomy_hash() -> str:
-    return blake3(rfc8785.dumps(TAXONOMY_DESCRIPTOR)).hexdigest()
+    return clean_taxonomy_hash(TAXONOMY_PATH)
 
 
 # ── The FULL receipt -> commitment + indexes PROJECTION (ADR-0003 §4) ───────
@@ -358,7 +351,7 @@ def fixed_content_with_ert() -> dict:
             "effect": "spend",
             "egress": "crosses_trust_boundary",
             "observability": "wire",
-            "taxonomy_hash": SHIPPED_TAXONOMY_HASH,
+            "taxonomy_hash": taxonomy_hash(),
         },
     }
     return content
@@ -533,7 +526,6 @@ def main() -> int:
         "wire_endpoint": "POST /v1/commitments",
         "wire_version": COMMITMENT_WIRE_VERSION,
         "envelope_kind": COMMITMENT_ENVELOPE_KIND,
-        "taxonomy_descriptor": TAXONOMY_DESCRIPTOR,
         "taxonomy_hash": taxonomy_hash(),
         "operator_public_key_b64": ZERO_SEED_PUBKEY,
         "signer_fpr": signer_fpr(op),

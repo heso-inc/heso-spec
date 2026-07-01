@@ -1,0 +1,26 @@
+# heso/payment-providers — first-party payment rail host facts.
+#
+# This is registry-governed provider knowledge, not taxonomy spine. The core
+# `payment_endpoint` class is defined by structural effect; this pack only adds
+# well-known host evidence that resolves to that class.
+
+id = "heso/payment-providers"
+version = 1
+status = "active"
+target_class = "payment_endpoint"
+primitive = "move-value"
+summary = "Well-known payment processor hosts that structurally indicate value movement."
+registered = "2026-06-30"
+
+[[predicate]]
+kind = "host_set"
+host_suffixes = [
+  ".stripe.com", ".adyen.com", ".braintreegateway.com", ".paypal.com",
+  ".squareup.com", ".checkout.com", ".razorpay.com", ".mollie.com",
+  ".wise.com", ".plaid.com", ".dwolla.com", ".gocardless.com",
+  ".payments.jpmorgan.com", ".coinbase.com",
+]
+hosts = [
+  "api.stripe.com", "api.adyen.com", "api.paypal.com",
+  "api.payments.jpmorgan.com",
+]

@@ -3,9 +3,9 @@
 **Status: Normative (frozen).**
 
 The **v1** suite of the HESO ActionReceipt. v1 is **frozen and byte-stable**: it
-is kept so receipts already minted under it verify forever, exactly as ADR
-[0012](../../redesign/decisions/0012-taxonomy-versioning-pin-at-signing.md) (law at
-the time of signing) and the v1/v2 coexistence precedent require. New receipts are
+is kept so receipts already minted under it verify forever, exactly as the
+[governance pin-at-signing rule](../GOVERNANCE.md#41-pin-at-signing-verify-against-the-pinned-version)
+(law at the time of signing) and the v1/v2 coexistence precedent require. New receipts are
 minted under [`action-receipt.md`](./action-receipt.md) (v2); this module exists
 only so a verifier can still validate a v1 artifact.
 
