@@ -296,7 +296,8 @@ governs). **Tri-state: VALID** (green) / **FAIL** (affirmatively wrong) /
 verdict:
 
 > **PG-1..PG-7 → TL-0..TL-2 → PG-equiv → deferred-proof gate → per-proof [Check 0
-> → Checks 1–4 → Check 5] → Check 6 → Check 7 → combined VALID.**
+> → Checks 1–4 → Check 5] → Check 6 → Check 7 (both over `enclave_window_proofs[0]`)
+> → combined VALID.**
 
 **PG (pre-gate).**
 - **PG-2** `profile` unknown ⇒ WITHHELD `EnclaveUnsupportedContract` (ALWAYS, regardless of `required`).
@@ -355,6 +356,15 @@ deterministic single tags.
 - `authorization_token.token_hash ≠ event_bytes.authorization_token` ⇒ FAIL `EnclaveTokenBindingMismatch`.
 - `root_sig_b64` invalid under `app_key_spki` over `window_root_hex` ⇒ FAIL `EnclaveRootSignatureInvalid`.
 - Merkle fold ≠ `window_root_hex` ⇒ FAIL `EnclaveInclusionProofInvalid`.
+
+**Proof selector for Checks 6–7 (normative).** Checks 0–5 run per-proof over EVERY
+`enclave_window_proofs` entry. Checks 6 (witness) and 7 (registry) are single-proof
+legs: when the receipt carries 2+ entries, they evaluate against
+`enclave_window_proofs[0]` — the FIRST sidecar entry — and no other. PG-equiv already
+forbids two entries that share `evidence` but disagree on `window_root_hex`, so the
+first entry is a well-defined choice; pinning index `0` normatively guarantees two
+conformant verifiers reach the SAME witness/registry verdict on the SAME receipt rather
+than silently selecting different proofs.
 
 **Check 6 (witness quorum — no network).**
 - Unknown `policy_version` ⇒ WITHHELD `EnclaveWitnessPolicyUnknown` (`None` ⇒ the launch advisory policy `threshold=1, external=0`).
@@ -458,15 +468,37 @@ equivocation check, and the **ES384 `root_sig`/`promise_sig`** signatures. The
 adversarial tests confirm these are live: tampering the window root, the registry
 proof, the event bytes, or the witness pubkey each flips VALID to the precise FAIL tag.
 
-**The ONE modeled boundary (honest limit).** The reference verifier does NOT re-run
-the AWS-Nitro **COSE_Sign1 / cabundle cert-chain / PCR-extraction** crypto — that needs
-a live enclave and the AWS root CA, and the live Nitro parser is a separate
-deliverable. The conformance corpus therefore carries the facts that parser WOULD
-yield (`cose_sig_valid`, `root_fpr`, `chain_valid`, `pcr0`, `app_key_spki`, …) keyed
-by the opaque `evidence` string, and the **ML-DSA-44** cosignature signature validity
-is likewise a fact (Ed25519 cosigs are verified for real; ML-DSA is a separate
-deliverable). A production verifier replaces that boundary with the real parser; every
-OTHER leg in this module is already byte-real.
+**Modeled signature boundaries (honest limit — Grade-0).** The REFERENCE verifier in
+`verifier/heso_verify.py` does NOT re-execute THREE signature-bearing crypto boundaries;
+each is supplied as an out-of-band FACT in `ctx` (a Grade-0 model), not re-derived from
+the wire bytes. This is a property of the REFERENCE implementation only — the §6 flow
+STILL REQUIRES a PRODUCTION verifier to verify each of these signatures for real, and
+the FAIL tags §6 emits (`EnclaveAttestationSignatureInvalid`,
+`EnclaveWitnessCosigInvalid`, `EnclaveWitnessCheckpointInvalid`,
+`EnclaveRegistryProofInvalid`) are the verdicts a real verifier MUST reach on a bad
+signature.
+
+1. **AWS-Nitro COSE_Sign1 / cabundle cert-chain / PCR-extraction** (Checks 1–4). A live
+   enclave and the AWS root CA are needed to parse the NSM document, so the corpus carries
+   the facts that parser WOULD yield — `cose_sig_valid`, `root_fpr`, `chain_valid`,
+   `pcr0`, `app_key_spki`, … — keyed by the opaque `evidence` string
+   (`ctx["attestations"]`). The live Nitro parser is a separate deliverable.
+2. **Witness cosignature raw-signature bytes** (Check 6). `_enclave_cosig_ok` performs the
+   REAL structural checks — `key_id_hex` recompute from the policy entry and the cosig
+   active-window time bounds — but does NOT Ed25519/ML-DSA-verify the `cosig_line` bytes;
+   validity is modeled via `ctx["invalid_cosigs"]`. BOTH the Ed25519 cosig-line
+   byte-verification AND ML-DSA-44 support are the Phase-6 follow-up (once the C2SP
+   note-verification library is wired). Vector B23 exercises this rejection path
+   (`FAIL EnclaveWitnessCosigInvalid`).
+3. **Checkpoint log-key signature validity** (Checks 6 and 7). `_checkpoint_from_b64`
+   PARSES the C2SP signed note but does NOT verify the witness/registry log key's
+   signature over it; validity is modeled via `ctx["invalid_checkpoints"]`. Vector B22
+   exercises this rejection path (`FAIL EnclaveWitnessCheckpointInvalid`).
+
+Every OTHER leg in this module — every leg that is a pure function of the wire bytes,
+including the ES384 `root_sig`/`promise_sig` signatures listed above — is byte-real, NOT
+modeled. The RT-1..10 byte-identity claim is unaffected: those goldens cover the
+operator-signed preimages, not the witness cosig or checkpoint bytes.
 
 **Operational residual.** A `CHARGE_CONFIRMED_SEAL_FAILED` backend state is NOT a wire
 field; such a receipt has no `enclave_egress` proof ⇒ the verifier WITHHELDs (the

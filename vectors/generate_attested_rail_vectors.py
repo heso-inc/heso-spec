@@ -11,9 +11,12 @@ Every leg that is a pure function of bytes is REAL: the BLAKE3 ``content_digest`
 binding, the params/token congruence over the decoded ``event_bytes``, the
 SHA-256 window-tree fold, the index-driven RFC-6962 Type-B/Type-C inclusion folds,
 the RFC-3339 time math, and the ES384 ``root_sig``/``promise_sig`` signatures
-(deterministic P-384 keys). The AWS-Nitro COSE/cabundle/PCR attestation is the ONE
-modeled boundary — carried as decoded facts keyed by the opaque ``evidence``
-string (modules/attested-rail.md §8). Run: ``python generate_attested_rail_vectors.py``.
+(deterministic P-384 keys). The reference verifier MODELS three signature boundaries
+as out-of-band ``ctx`` facts (Grade-0): the AWS-Nitro COSE/cabundle/PCR attestation
+(``ctx["attestations"]``), the witness cosignature raw-signature bytes
+(``ctx["invalid_cosigs"]``), and the checkpoint log-key signature validity
+(``ctx["invalid_checkpoints"]``); a production verifier MUST verify all three for real
+(modules/attested-rail.md §8). Run: ``python generate_attested_rail_vectors.py``.
 """
 
 from __future__ import annotations
